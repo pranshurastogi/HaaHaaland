@@ -251,11 +251,48 @@ export function CardResult({
           <span>{card.position.toUpperCase()}</span>
         </div>
         <div className="result-identity">
-          <div className="player-mark large">
-            {card.primaryArchetypeId.slice(0, 2).toUpperCase()}
+          <div className="profile-photo-shell">
+            {card.profileImageUrl ? (
+              <img
+                className="profile-photo"
+                src={card.profileImageUrl}
+                alt={`${card.displayName ?? `@${card.handle}`} public profile`}
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="player-mark large">
+                {card.handle.slice(0, 2).toUpperCase()}
+              </div>
+            )}
+            <span
+              className={`profile-source ${card.profileImagePlatform ?? "unverified"}`}
+            >
+              {card.profileImagePlatform === "instagram"
+                ? "◎ INSTAGRAM"
+                : card.profileImagePlatform === "x"
+                  ? "𝕏 X PROFILE"
+                  : "NO PUBLIC PHOTO"}
+            </span>
           </div>
           <div>
-            <p className="position">@{card.handle}</p>
+            <div className="social-handles">
+              <a
+                href={`https://x.com/${card.handle}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                𝕏 @{card.handle}
+              </a>
+              {card.instagramHandle ? (
+                <a
+                  href={`https://instagram.com/${card.instagramHandle}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  ◎ @{card.instagramHandle}
+                </a>
+              ) : null}
+            </div>
             <h2>{card.headline}</h2>
             <p className="archetype">
               Primary archetype · {card.primaryArchetypeId.replaceAll("-", " ")}

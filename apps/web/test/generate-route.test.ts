@@ -22,6 +22,7 @@ function request() {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       xUsername: "releasefc",
+      instagramUsername: "releasefc",
       sessionId: "00000000-0000-4000-8000-000000000099",
     }),
   });

@@ -42,6 +42,8 @@ export type ResearchEvidence = {
   snippets: string[];
   sources: string[];
   confidence: number;
+  profileImageUrl?: string;
+  profileImagePlatform?: "x" | "instagram";
   providerRequestId?: string;
   cacheHit?: boolean;
   errorCategory?: "RESEARCH_NOT_FOUND" | "RESEARCH_TIMEOUT";
@@ -83,7 +85,7 @@ function boundedSet<K, V>(map: Map<K, V>, key: K, value: V, max: number) {
   map.set(key, value);
 }
 
-const RESEARCH_QUERY_VERSION = "linkup-profile-v1";
+const RESEARCH_QUERY_VERSION = "linkup-social-profile-v2";
 const MAX_RESEARCH_CACHE_ENTRIES = 500;
 const researchCache = new Map<
   string,
@@ -128,15 +130,18 @@ function apiError(
 async function research(
   handle: string,
   apiKey?: string,
+  platform: "x" | "instagram" = "x",
 ): Promise<ResearchEvidence> {
   if (!apiKey)
     return {
       snippets: [],
-      sources: [`https://x.com/${handle}`],
+      sources: [
+        `https://${platform === "x" ? "x.com" : "instagram.com"}/${handle}`,
+      ],
       confidence: 28,
       errorCategory: "RESEARCH_NOT_FOUND",
     };
-  const cacheKey = `${RESEARCH_QUERY_VERSION}:${handle}`;
+  const cacheKey = `${RESEARCH_QUERY_VERSION}:${platform}:${handle}`;
   const cached = researchCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now())
     return { ...cached.value, cacheHit: true };
@@ -152,16 +157,21 @@ async function research(
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        q: `Public profile, bio, recurring topics and indexed posts for X user @${handle}`,
+        q: `Official public ${platform === "x" ? "X (Twitter)" : "Instagram"} profile @${handle}, including the current profile picture, bio, recurring topics and indexed public posts`,
         depth: "standard",
         outputType: "searchResults",
         includeSources: true,
-        includeImages: false,
+        includeImages: true,
+        maxResults: 10,
       }),
     });
     if (!response.ok) throw new Error(`Linkup status ${response.status}`);
     const data = (await response.json()) as {
-      results?: Array<{ url?: string; content?: string }>;
+      results?: Array<{
+        type?: "text" | "image";
+        url?: string;
+        content?: string;
+      }>;
       requestId?: string;
     };
     const valid = (data.results ?? [])
@@ -171,19 +181,30 @@ async function research(
           PublicHttpUrlSchema.safeParse(result.url).success,
       )
       .slice(0, 8);
+    const image = (data.results ?? []).find(
+      (result) =>
+        result.type === "image" &&
+        result.url &&
+        PublicHttpUrlSchema.safeParse(result.url).success,
+    );
     const value: ResearchEvidence = {
       snippets: sanitizeEvidence(valid.map((r) => r.content!.slice(0, 500))),
       sources: [...new Set(valid.map((r) => r.url!))],
       confidence: Math.min(88, 35 + valid.length * 7),
       cacheHit: false,
       ...(data.requestId ? { providerRequestId: data.requestId } : {}),
+      ...(image?.url
+        ? { profileImageUrl: image.url, profileImagePlatform: platform }
+        : {}),
     };
     cacheResearch(cacheKey, value, 24 * 60 * 60 * 1000);
     return value;
   } catch (error) {
     const value: ResearchEvidence = {
       snippets: [],
-      sources: [`https://x.com/${handle}`],
+      sources: [
+        `https://${platform === "x" ? "x.com" : "instagram.com"}/${handle}`,
+      ],
       confidence: 22,
       cacheHit: false,
       errorCategory:
@@ -199,6 +220,7 @@ async function research(
 }
 function fallbackCard(
   handle: string,
+  instagramHandle: string,
   evidence: ResearchEvidence,
   manualPosts: string[],
   intensity: string,
@@ -240,6 +262,7 @@ function fallbackCard(
   return ScoutCardSchema.parse({
     version: "1.0",
     handle,
+    instagramHandle,
     primaryArchetypeId: primary.id,
     position: "Timeline playmaker",
     clubName: `${handle.slice(0, 18)} Social Club`,
@@ -607,9 +630,38 @@ export function buildApp(config: Config) {
     const started = Date.now();
     let evidence: ResearchEvidence;
     try {
-      evidence = config.researchProvider
+      const xEvidence = config.researchProvider
         ? await config.researchProvider.research(parsed.data.xUsername)
-        : await research(parsed.data.xUsername, config.linkupApiKey);
+        : await research(parsed.data.xUsername, config.linkupApiKey, "x");
+      const instagramEvidence = await research(
+        parsed.data.instagramUsername,
+        config.linkupApiKey,
+        "instagram",
+      );
+      evidence = {
+        snippets: [...xEvidence.snippets, ...instagramEvidence.snippets],
+        sources: [
+          ...new Set([...xEvidence.sources, ...instagramEvidence.sources]),
+        ],
+        confidence: Math.round(
+          (xEvidence.confidence + instagramEvidence.confidence) / 2,
+        ),
+        cacheHit: Boolean(xEvidence.cacheHit && instagramEvidence.cacheHit),
+        ...(xEvidence.errorCategory && instagramEvidence.errorCategory
+          ? { errorCategory: xEvidence.errorCategory }
+          : {}),
+        ...(xEvidence.profileImageUrl
+          ? {
+              profileImageUrl: xEvidence.profileImageUrl,
+              profileImagePlatform: "x" as const,
+            }
+          : instagramEvidence.profileImageUrl
+            ? {
+                profileImageUrl: instagramEvidence.profileImageUrl,
+                profileImagePlatform: "instagram" as const,
+              }
+            : {}),
+      };
     } catch {
       evidence = {
         snippets: [],
@@ -672,11 +724,23 @@ export function buildApp(config: Config) {
       generated?.card ??
       fallbackCard(
         parsed.data.xUsername,
+        parsed.data.instagramUsername,
         evidence,
         safeManualPosts,
         parsed.data.intensity,
       );
-    const safety = enforceCardSafety(rawCard, parsed.data.intensity);
+    const enrichedCard = ScoutCardSchema.parse({
+      ...rawCard,
+      handle: parsed.data.xUsername,
+      instagramHandle: parsed.data.instagramUsername,
+      ...(evidence.profileImageUrl
+        ? {
+            profileImageUrl: evidence.profileImageUrl,
+            profileImagePlatform: evidence.profileImagePlatform,
+          }
+        : {}),
+    });
+    const safety = enforceCardSafety(enrichedCard, parsed.data.intensity);
     const managementToken = randomBytes(32).toString("base64url");
     const sessionId = parsed.data.sessionId;
     let images;

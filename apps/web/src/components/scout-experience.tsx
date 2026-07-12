@@ -9,11 +9,9 @@ const steps = [
   "Calling VAR…",
 ];
 export function ScoutExperience({
-  instagramEnabled,
   manualPostsEnabled,
   leaderboardEnabled,
 }: {
-  instagramEnabled: boolean;
   manualPostsEnabled: boolean;
   leaderboardEnabled: boolean;
 }) {
@@ -130,37 +128,49 @@ export function ScoutExperience({
           </div>
           <h1>Which footballer is hiding in your timeline?</h1>
           <p className="lede">
-            Enter your X username. Get scouted, rated, roasted, and compared
-            with the footballer you actually resemble.
+            Connect your public X and Instagram identities. We scout both, show
+            the source of your profile photo, and turn the receipts into one
+            unapologetically shiny football card.
           </p>
           <form onSubmit={submit} className="scout-form">
-            <label htmlFor="xUsername">X username</label>
-            <div className="input-row">
-              <span>@</span>
-              <input
-                id="xUsername"
-                name="xUsername"
-                required
-                maxLength={50}
-                autoComplete="off"
-                placeholder="yourhandle"
-                onFocus={() => track("username_input_started")}
-                aria-describedby={error ? "scout-error" : undefined}
-              />
-              <button className="button" disabled={loading || !mounted}>
-                {loading ? steps[step] : "Scout My Timeline"}
-              </button>
+            <div className="social-inputs">
+              <label htmlFor="xUsername">
+                <span>X / Twitter</span>
+                <div className="social-input x-input">
+                  <b>𝕏</b>
+                  <span>@</span>
+                  <input
+                    id="xUsername"
+                    name="xUsername"
+                    required
+                    maxLength={50}
+                    autoComplete="off"
+                    placeholder="xhandle"
+                    onFocus={() => track("username_input_started")}
+                    aria-describedby={error ? "scout-error" : undefined}
+                  />
+                </div>
+              </label>
+              <label htmlFor="instagramUsername">
+                <span>Instagram</span>
+                <div className="social-input instagram-input">
+                  <b>◎</b>
+                  <span>@</span>
+                  <input
+                    id="instagramUsername"
+                    name="instagramUsername"
+                    required
+                    maxLength={30}
+                    autoComplete="off"
+                    placeholder="instahandle"
+                  />
+                </div>
+              </label>
             </div>
             <p className="sr-only" role="status" aria-live="polite">
               {loading ? steps[step] : "Ready to scout a public timeline."}
             </p>
-            <div className="form-grid">
-              {instagramEnabled && (
-                <label>
-                  Instagram <em>optional</em>
-                  <input name="instagramUsername" placeholder="username" />
-                </label>
-              )}
+            <div className="form-grid compact">
               <label>
                 Roast intensity
                 <select name="intensity" defaultValue="derby">
@@ -169,6 +179,12 @@ export function ScoutExperience({
                   <option value="red-card">Red Card</option>
                 </select>
               </label>
+              <button
+                className="button scout-submit"
+                disabled={loading || !mounted}
+              >
+                {loading ? steps[step] : "Build My Scout Card"}
+              </button>
             </div>
             {manualPostsEnabled && (
               <details>
@@ -210,8 +226,7 @@ export function ScoutExperience({
               </p>
             )}
             <p className="privacy">
-              Public signals only · No login required · Result ready in under
-              60s
+              Both public profiles required · No login · No private data
             </p>
           </form>
           <a className="secondary-link" href="#startup">

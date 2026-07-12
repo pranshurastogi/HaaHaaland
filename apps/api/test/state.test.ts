@@ -50,6 +50,7 @@ describe("state store integration", () => {
       headers,
       payload: {
         xUsername: "persistimagefc",
+        instagramUsername: "persistimagefc",
         sessionId: crypto.randomUUID(),
       },
     });
@@ -78,6 +79,7 @@ describe("state store integration", () => {
       headers: { ...headers, "idempotency-key": idempotencyKey },
       payload: {
         xUsername: "multinodefc",
+        instagramUsername: "multinodefc",
         sessionId,
       },
     });
@@ -88,7 +90,11 @@ describe("state store integration", () => {
       method: "POST",
       url: "/v1/scout/profile",
       headers: { ...headers, "idempotency-key": idempotencyKey },
-      payload: { xUsername: "multinodefc", sessionId },
+      payload: {
+        xUsername: "multinodefc",
+        instagramUsername: "multinodefc",
+        sessionId,
+      },
     });
     expect(replay.statusCode).toBe(200);
     expect(replay.json().id).toBe(payload.id);

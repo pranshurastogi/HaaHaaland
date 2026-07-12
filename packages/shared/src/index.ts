@@ -92,8 +92,8 @@ export const XHandleSchema = z.string().transform((value, ctx) => {
 });
 export const InstagramHandleSchema = z
   .string()
+  .min(1, "Enter an Instagram username")
   .transform((value, ctx) => {
-    if (!value.trim()) return "";
     try {
       return normalizeInstagramHandle(value);
     } catch (error) {
@@ -104,8 +104,7 @@ export const InstagramHandleSchema = z
       });
       return z.NEVER;
     }
-  })
-  .optional();
+  });
 export const ManualPostsSchema = z
   .array(z.string().trim().min(1).max(500))
   .max(3)
@@ -202,6 +201,9 @@ export const ScoutCardSchema = z.object({
   version: z.string(),
   handle: z.string(),
   displayName: z.string().optional(),
+  instagramHandle: z.string().optional(),
+  profileImageUrl: PublicHttpUrlSchema.optional(),
+  profileImagePlatform: z.enum(["x", "instagram"]).optional(),
   primaryArchetypeId: z.enum(ARCHETYPE_IDS),
   secondaryArchetypeId: z.enum(ARCHETYPE_IDS).optional(),
   position: z.string().max(40),
