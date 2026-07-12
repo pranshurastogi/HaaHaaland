@@ -77,6 +77,30 @@ describe("Convex runtime state", () => {
     ).toEqual({ status: "conflict" });
   });
 
+  it("captures every submitted X and Instagram handle", async () => {
+    const t = convexTest(schema, modules);
+    expect(
+      await t.mutation(mutation("runtime:recordHandleSubmission"), {
+        secret,
+        entries: [
+          { platform: "x", handle: "haaland_fc" },
+          { platform: "instagram", handle: "haaland_fc" },
+        ],
+        sessionHash: "session-a",
+        requestId: "request-a",
+      }),
+    ).toEqual({ recorded: 2 });
+    const stored = await t.run((ctx) =>
+      ctx.db.query("handleSubmissions").collect(),
+    );
+    expect(stored).toHaveLength(2);
+    expect(stored.map((row) => row.platform).sort()).toEqual([
+      "instagram",
+      "x",
+    ]);
+    expect(stored.every((row) => row.sessionHash === "session-a")).toBe(true);
+  });
+
   it("persists cards, leaderboard saves, challenges, and one referral credit", async () => {
     const t = convexTest(schema, modules);
     await t.mutation(mutation("runtime:putCard"), {

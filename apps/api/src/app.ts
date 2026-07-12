@@ -24,7 +24,11 @@ import {
   type ScoutCard,
 } from "@haahaaland/shared";
 
-import { MemoryStateStore, type AppStateStore } from "./state";
+import {
+  MemoryStateStore,
+  type AppStateStore,
+  type HandleSubmission,
+} from "./state";
 import type { CardImageStore } from "./images";
 
 export const posthog = process.env.POSTHOG_API_KEY
@@ -492,6 +496,24 @@ export function buildApp(config: Config) {
             parsed.error.issues[0]?.message ?? "Invalid scouting request.",
           ),
         );
+
+    const submittedHandles: HandleSubmission[] = [
+      { platform: "x", handle: parsed.data.xUsername },
+    ];
+    if (parsed.data.instagramUsername)
+      submittedHandles.push({
+        platform: "instagram",
+        handle: parsed.data.instagramUsername,
+      });
+    void state
+      .recordHandleSubmission(
+        submittedHandles,
+        hashValue(parsed.data.sessionId),
+        request.id,
+      )
+      .catch((error: unknown) =>
+        request.log.warn({ err: error }, "handle submission capture failed"),
+      );
 
     const idempotencyKey = request.headers["idempotency-key"];
     const requestHash = hashValue(JSON.stringify(parsed.data));

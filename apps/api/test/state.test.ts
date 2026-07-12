@@ -8,6 +8,28 @@ const apps: ReturnType<typeof buildApp>[] = [];
 afterEach(async () => Promise.all(apps.splice(0).map((app) => app.close())));
 
 describe("state store integration", () => {
+  it("captures the submitted X and Instagram handles regardless of generation outcome", async () => {
+    const stateStore = new MemoryStateStore();
+    const app = buildApp({ proxySecret, stateStore });
+    apps.push(app);
+    const generated = await app.inject({
+      method: "POST",
+      url: "/v1/scout/profile",
+      headers,
+      payload: {
+        xUsername: "capturedfc",
+        instagramUsername: "captured.ig",
+        sessionId: crypto.randomUUID(),
+      },
+    });
+    expect(generated.statusCode).toBe(201);
+    const submissions = stateStore.getHandleSubmissions();
+    expect(submissions).toEqual([
+      expect.objectContaining({ platform: "x", handle: "capturedfc" }),
+      expect.objectContaining({ platform: "instagram", handle: "captured.ig" }),
+    ]);
+  });
+
   it("persists stable image URLs returned by the backend image store", async () => {
     const stateStore = new MemoryStateStore();
     const app = buildApp({

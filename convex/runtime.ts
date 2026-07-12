@@ -116,6 +116,28 @@ export const completeGeneration = mutationGeneric({
   },
 });
 
+export const recordHandleSubmission = mutationGeneric({
+  args: {
+    secret: v.string(),
+    entries: v.array(v.object({ platform: v.string(), handle: v.string() })),
+    sessionHash: v.string(),
+    requestId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireSecret(args.secret);
+    const now = Date.now();
+    for (const entry of args.entries)
+      await ctx.db.insert("handleSubmissions", {
+        platform: entry.platform,
+        handle: entry.handle,
+        sessionHash: args.sessionHash,
+        requestId: args.requestId,
+        createdAt: now,
+      });
+    return { recorded: args.entries.length };
+  },
+});
+
 export const putCard = mutationGeneric({
   args: {
     secret: v.string(),

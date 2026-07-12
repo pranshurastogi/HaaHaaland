@@ -181,6 +181,15 @@ export default defineSchema({
     requestId: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_action_created", ["action", "createdAt"]),
+  handleSubmissions: defineTable({
+    platform: v.string(),
+    handle: v.string(),
+    sessionHash: v.string(),
+    requestId: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_platform_handle", ["platform", "handle"])
+    .index("by_created", ["createdAt"]),
   generationStatus: defineTable({
     publicId: v.string(),
     status: v.string(),

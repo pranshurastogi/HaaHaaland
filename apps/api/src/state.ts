@@ -43,6 +43,11 @@ export type LeaderboardEntry = {
   aura: number;
 };
 
+export type HandleSubmission = {
+  platform: "x" | "instagram";
+  handle: string;
+};
+
 export interface AppStateStore {
   durable: boolean;
   beginGeneration(
@@ -57,6 +62,11 @@ export interface AppStateStore {
     | { status: "complete"; response: unknown }
   >;
   completeGeneration(key: string | undefined, response: unknown): Promise<void>;
+  recordHandleSubmission(
+    entries: HandleSubmission[],
+    sessionHash: string,
+    requestId: string,
+  ): Promise<void>;
   putCard(id: string, record: CardRecord): Promise<void>;
   getCard(id: string): Promise<CardRecord | null>;
   saveCard(id: string, email: string): Promise<boolean>;
@@ -88,6 +98,13 @@ export class MemoryStateStore implements AppStateStore {
   readonly durable = false;
   private readonly cards = new Map<string, CardRecord>();
   private readonly challenges = new Map<string, ChallengeRecord>();
+  private readonly handleSubmissions: Array<
+    HandleSubmission & {
+      sessionHash: string;
+      requestId: string;
+      createdAt: string;
+    }
+  > = [];
   private readonly shares: Array<{
     cardId: string;
     channel: string;
@@ -139,6 +156,27 @@ export class MemoryStateStore implements AppStateStore {
       generation.response = response;
       generation.expiresAt = Date.now() + 24 * 60 * 60 * 1000;
     }
+  }
+
+  async recordHandleSubmission(
+    entries: HandleSubmission[],
+    sessionHash: string,
+    requestId: string,
+  ) {
+    const createdAt = new Date().toISOString();
+    for (const entry of entries)
+      this.handleSubmissions.push({
+        ...entry,
+        sessionHash,
+        requestId,
+        createdAt,
+      });
+    if (this.handleSubmissions.length > 10_000)
+      this.handleSubmissions.splice(0, 1_000);
+  }
+
+  getHandleSubmissions() {
+    return this.handleSubmissions;
   }
 
   async putCard(id: string, record: CardRecord) {
@@ -259,6 +297,19 @@ export class ConvexStateStore implements AppStateStore {
       secret: this.secret,
       key,
       response,
+    });
+  }
+
+  async recordHandleSubmission(
+    entries: HandleSubmission[],
+    sessionHash: string,
+    requestId: string,
+  ) {
+    await this.client.mutation(mutation("runtime:recordHandleSubmission"), {
+      secret: this.secret,
+      entries,
+      sessionHash,
+      requestId,
     });
   }
 
