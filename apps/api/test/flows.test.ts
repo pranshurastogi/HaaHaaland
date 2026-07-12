@@ -30,18 +30,34 @@ describe("abuse and virality flows", () => {
     const first = await generate(
       app,
       "idempotentfc",
-      "idem_123456789012",
+      "idempotency_key_123456789012",
       sessionId,
     );
     const replay = await generate(
       app,
       "idempotentfc",
-      "idem_123456789012",
+      "idempotency_key_123456789012",
       sessionId,
     );
     expect(first.statusCode).toBe(201);
     expect(replay.statusCode).toBe(200);
     expect(replay.json().id).toBe(first.json().id);
+  });
+
+  it("rejects malformed and cross-request idempotency keys", async () => {
+    const app = buildApp({ proxySecret: "test-secret" });
+    apps.push(app);
+    const sessionId = crypto.randomUUID();
+    expect(
+      (await generate(app, "shortkeyfc", "short", sessionId)).statusCode,
+    ).toBe(400);
+    const key = "bound_request_key_123456";
+    expect((await generate(app, "boundonefc", key, sessionId)).statusCode).toBe(
+      201,
+    );
+    expect((await generate(app, "boundtwofc", key, sessionId)).statusCode).toBe(
+      409,
+    );
   });
 
   it("applies a handle cooldown", async () => {
@@ -54,6 +70,32 @@ describe("abuse and virality flows", () => {
     const blocked = await generate(app, "cooldownfc");
     expect(blocked.statusCode).toBe(429);
     expect(blocked.json().error.code).toBe("RATE_LIMITED");
+  });
+
+  it("requires the private capability before saving an email", async () => {
+    const app = buildApp({ proxySecret: "test-secret" });
+    apps.push(app);
+    const generated = (await generate(app, "ownershipfc")).json();
+    const denied = await app.inject({
+      method: "POST",
+      url: `/v1/cards/${generated.id}/save`,
+      headers: proxyHeaders,
+      payload: {
+        email: "owner@example.com",
+        managementToken: "wrong_token_placeholder_000000000000",
+      },
+    });
+    expect(denied.statusCode).toBe(403);
+    const saved = await app.inject({
+      method: "POST",
+      url: `/v1/cards/${generated.id}/save`,
+      headers: proxyHeaders,
+      payload: {
+        email: "owner@example.com",
+        managementToken: generated.managementToken,
+      },
+    });
+    expect(saved.statusCode).toBe(200);
   });
 
   it("completes a challenge once and rejects self-credit", async () => {
@@ -92,6 +134,21 @@ describe("abuse and virality flows", () => {
       },
     });
     expect(self.statusCode).toBe(409);
+
+    const sameSessionCard = (
+      await generate(app, "sockpuppetfc", undefined, challengerSession)
+    ).json();
+    const sameSession = await app.inject({
+      method: "POST",
+      url: `/v1/challenges/${created.json().slug}/accept`,
+      headers: proxyHeaders,
+      payload: {
+        acceptedCardId: sameSessionCard.id,
+        managementToken: sameSessionCard.managementToken,
+        sessionId: challengerSession,
+      },
+    });
+    expect(sameSession.statusCode).toBe(409);
 
     const accepted = await app.inject({
       method: "POST",

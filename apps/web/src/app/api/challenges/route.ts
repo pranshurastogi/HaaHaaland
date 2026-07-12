@@ -35,22 +35,36 @@ export async function POST(request: Request) {
   const api = process.env.RAILWAY_API_URL;
   const secret = process.env.INTERNAL_PROXY_SECRET;
   if (api && secret) {
-    const response = await fetch(`${api.replace(/\/$/, "")}/v1/challenges`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-haahaaland-proxy-secret": secret,
-      },
-      body: JSON.stringify(parsed.data),
-      signal: AbortSignal.timeout(8_000),
-    });
-    return new NextResponse(await response.text(), {
-      status: response.status,
-      headers: {
-        "content-type": "application/json",
-        "cache-control": "no-store",
-      },
-    });
+    try {
+      const response = await fetch(`${api.replace(/\/$/, "")}/v1/challenges`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-haahaaland-proxy-secret": secret,
+        },
+        body: JSON.stringify(parsed.data),
+        signal: AbortSignal.timeout(8_000),
+      });
+      return new NextResponse(await response.text(), {
+        status: response.status,
+        headers: {
+          "content-type": "application/json",
+          "cache-control": "no-store",
+        },
+      });
+    } catch {
+      return NextResponse.json(
+        {
+          error: {
+            code: "SERVICE_UNAVAILABLE",
+            message: "Challenge creation is temporarily unavailable.",
+            requestId: crypto.randomUUID(),
+            retryable: true,
+          },
+        },
+        { status: 502 },
+      );
+    }
   }
 
   const sourceCard = cardStore.get(parsed.data.cardId);

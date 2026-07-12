@@ -96,6 +96,26 @@ describe("deterministic safety", () => {
     expect(result.card.safetyFlags).toContain("deterministic-safety-rewrite");
   });
 
+  it("rewrites prohibited text in every generated display surface", () => {
+    const result = enforceCardSafety(
+      {
+        ...safeCard,
+        displayName: "A criminal mastermind",
+        shareCopy: "Share this scammer report",
+        stats: safeCard.stats.map((stat, index) =>
+          index === 0
+            ? { ...stat, reason: "A hidden medical diagnosis" }
+            : stat,
+        ),
+      },
+      "derby",
+    );
+    const rendered = JSON.stringify(result.card);
+    expect(rendered).not.toMatch(/criminal|scammer|medical diagnosis/i);
+    expect(result.card.displayName).toBeUndefined();
+    expect(result.card.safetyFlags).toContain("deterministic-safety-rewrite");
+  });
+
   it("keeps the football-meme Fraud Risk stat when safely explained", () => {
     const result = enforceCardSafety(safeCard, "derby");
     expect(

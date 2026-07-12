@@ -437,12 +437,14 @@ export function buildApp(config: Config) {
       );
   });
 
+  const durableStateReady =
+    config.durableStateReady ?? process.env.NODE_ENV !== "production";
   app.get("/health", async () => ({ ok: true, service: "haahaaland-api" }));
-  app.get("/ready", async (_request, reply) => {
-    const ready =
-      config.durableStateReady ?? process.env.NODE_ENV !== "production";
-    return reply.code(ready ? 200 : 503).send({ ready });
-  });
+  app.get("/ready", async (_request, reply) =>
+    reply
+      .code(durableStateReady ? 200 : 503)
+      .send({ ready: durableStateReady }),
+  );
 
   app.addHook("onRequest", async (request, reply) => {
     if (request.url === "/health" || request.url === "/ready") return;
@@ -460,7 +462,19 @@ export function buildApp(config: Config) {
             "The application proxy could not be authenticated.",
           ),
         );
+      return;
     }
+    if (!durableStateReady)
+      await reply
+        .code(503)
+        .send(
+          apiError(
+            request.id,
+            "CONVEX_UNAVAILABLE",
+            "Durable application state is not configured.",
+            true,
+          ),
+        );
   });
 
   const scoutProfile = async (request: any, reply: any) => {
@@ -567,9 +581,19 @@ export function buildApp(config: Config) {
     }
 
     const started = Date.now();
-    const evidence = config.researchProvider
-      ? await config.researchProvider.research(parsed.data.xUsername)
-      : await research(parsed.data.xUsername, config.linkupApiKey);
+    let evidence: ResearchEvidence;
+    try {
+      evidence = config.researchProvider
+        ? await config.researchProvider.research(parsed.data.xUsername)
+        : await research(parsed.data.xUsername, config.linkupApiKey);
+    } catch {
+      evidence = {
+        snippets: [],
+        sources: [`https://x.com/${parsed.data.xUsername}`],
+        confidence: 20,
+        errorCategory: "RESEARCH_TIMEOUT",
+      };
+    }
     const safeManualPosts = sanitizeEvidence(parsed.data.manualPosts);
     request.log.info(
       {
@@ -585,20 +609,25 @@ export function buildApp(config: Config) {
       },
       "research stage completed",
     );
-    const generated = config.cardGenerator
-      ? await config.cardGenerator.generate({
-          handle: parsed.data.xUsername,
-          evidence,
-          manualPosts: safeManualPosts,
-          intensity: parsed.data.intensity,
-        })
-      : await generateWithLlm(
-          config,
-          parsed.data.xUsername,
-          evidence,
-          safeManualPosts,
-          parsed.data.intensity,
-        );
+    let generated: { card: ScoutCard; retryCount: number } | null = null;
+    try {
+      generated = config.cardGenerator
+        ? await config.cardGenerator.generate({
+            handle: parsed.data.xUsername,
+            evidence,
+            manualPosts: safeManualPosts,
+            intensity: parsed.data.intensity,
+          })
+        : await generateWithLlm(
+            config,
+            parsed.data.xUsername,
+            evidence,
+            safeManualPosts,
+            parsed.data.intensity,
+          );
+    } catch {
+      generated = null;
+    }
     const rawCard =
       generated?.card ??
       fallbackCard(
@@ -634,8 +663,6 @@ export function buildApp(config: Config) {
       managementTokenHash: hashValue(managementToken),
       sessionHash: hashValue(sessionId),
     });
-    lastGenerationByHandle.set(parsed.data.xUsername, now);
-    dailyGenerations += 1;
     if (typeof idempotencyKey === "string")
       idempotentGenerations.set(idempotencyKey, {
         requestHash,
