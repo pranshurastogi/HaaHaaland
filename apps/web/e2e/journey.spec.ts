@@ -8,6 +8,7 @@ async function generateCard(
   await page.goto("/");
   await page.getByLabel("X username").fill(handle);
   await page.getByRole("button", { name: "Scout My Timeline" }).click();
+  await page.waitForURL(/\/card\//, { timeout: 15_000 });
   await expect(page.getByText("SCOUT REPORT", { exact: true })).toBeVisible({
     timeout: 15_000,
   });
@@ -21,7 +22,7 @@ test("visitor completes the activation and sharing journey", async ({
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await generateCard(page, "@BuilderFC");
 
-  await expect(page.getByText(/limited public data/i)).toBeVisible();
+  await expect(page.getByText(/provisional score/i).first()).toBeVisible();
   await expect(page.getByRole("link", { name: "Share on X" })).toHaveAttribute(
     "href",
     /twitter\.com\/intent\/tweet/,

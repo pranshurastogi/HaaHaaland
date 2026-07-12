@@ -45,10 +45,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @haahaaland/web exec opennextjs-cloudflare build
       - name: Smoke OpenNext workerd runtime
-        env:
-          LOCAL_FALLBACK_ENABLED: "true"
         run: |
-          pnpm --filter @haahaaland/web exec opennextjs-cloudflare preview > /tmp/haahaaland-preview.log 2>&1 &
+          pnpm --filter @haahaaland/web exec opennextjs-cloudflare preview --env ci > /tmp/haahaaland-preview.log 2>&1 &
           preview_pid=$!
           trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
           for attempt in $(seq 1 45); do
