@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "pnpm --parallel --filter @haahaaland/api --filter @haahaaland/web dev",
     "build": "pnpm -r --if-present build",
+    "build:cloudflare": "pnpm --filter @haahaaland/web exec opennextjs-cloudflare build",
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "eslint .",
     "format": "prettier --write .",

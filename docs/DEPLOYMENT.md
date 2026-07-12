@@ -19,11 +19,12 @@ Create a separate Railway service with no public domain. Bind `0.0.0.0:8642`, re
 
 ## Cloudflare Worker
 
-1. Run `pnpm --filter @haahaaland/web run preview` and smoke the workerd URL.
-2. Authenticate Wrangler and create Worker secrets for `RAILWAY_API_URL` and `INTERNAL_PROXY_SECRET`; never use `NEXT_PUBLIC_` for either. Keep `LOCAL_FALLBACK_ENABLED=false` in production.
-3. Configure the public app/Convex/PostHog identifiers.
-4. Deploy with `pnpm --filter @haahaaland/web run deploy`.
-5. Add a custom domain in Workers & Pages, update `NEXT_PUBLIC_APP_URL`, redeploy, and verify canonical/OG URLs.
+1. For Cloudflare Git builds, use repository root `/` and build command `pnpm run build:cloudflare`. Do not use `npx opennextjs-cloudflare build`: the installed package is `@opennextjs/cloudflare`, and npm cannot resolve the binary name as a package.
+2. Run `pnpm --filter @haahaaland/web run preview` locally and smoke the workerd URL.
+3. Authenticate Wrangler and create Worker secrets for `RAILWAY_API_URL` and `INTERNAL_PROXY_SECRET`; never use `NEXT_PUBLIC_` for either. Keep `LOCAL_FALLBACK_ENABLED=false` in production.
+4. Configure the public app/Convex/PostHog identifiers.
+5. Deploy with `pnpm --filter @haahaaland/web run deploy`.
+6. Add a custom domain in Workers & Pages, update `NEXT_PUBLIC_APP_URL`, redeploy, and verify canonical/OG URLs.
 
 ## R2 finalized cards
 
