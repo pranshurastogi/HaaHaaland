@@ -1,0 +1,35 @@
+{
+  "name": "haahaaland",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.15.1",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @haahaaland/api --filter @haahaaland/web dev",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "eslint .",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "test": "pnpm -r --if-present test",
+    "test:e2e": "pnpm --filter @haahaaland/web test:e2e",
+    "security:secrets": "node scripts/check-secrets.mjs",
+    "check:env": "node scripts/check-env.mjs",
+    "smoke": "node scripts/smoke-test.mjs",
+    "verify": "pnpm security:secrets && pnpm format && pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@types/node": "^24.10.0",
+    "convex": "^1.42.1",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^16.5.0",
+    "prettier": "^3.8.2",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.53.1",
+    "vitest": "^4.1.0"
+  }
+}
