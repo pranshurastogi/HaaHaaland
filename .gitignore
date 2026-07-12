@@ -68,3 +68,6 @@ convex/_generated/
 # Local generated app data
 .data/
 .env.local
+
+# Local Claude Code session state
+.claude/
