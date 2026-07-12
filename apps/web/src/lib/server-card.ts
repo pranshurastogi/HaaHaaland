@@ -1,4 +1,8 @@
-import { ScoutCardSchema, type ScoutCard } from "@haahaaland/shared";
+import {
+  ProductUrlSchema,
+  ScoutCardSchema,
+  type ScoutCard,
+} from "@haahaaland/shared";
 import { cardStore } from "./store";
 
 export type PublicCardRecord = {
@@ -6,6 +10,7 @@ export type PublicCardRecord = {
   slug: string;
   card: ScoutCard;
   createdAt: string;
+  images?: { svgUrl: string; pngUrl: string; ogUrl: string };
 };
 
 export async function getServerCard(
@@ -32,6 +37,17 @@ export async function getServerCard(
     const data = (await response.json()) as Record<string, unknown>;
     const parsed = ScoutCardSchema.safeParse(data.card);
     if (!parsed.success) return null;
+    const rawImages =
+      typeof data.images === "object" && data.images !== null
+        ? (data.images as Record<string, unknown>)
+        : null;
+    const svgUrl = ProductUrlSchema.safeParse(rawImages?.svgUrl);
+    const pngUrl = ProductUrlSchema.safeParse(rawImages?.pngUrl);
+    const ogUrl = ProductUrlSchema.safeParse(rawImages?.ogUrl);
+    const images =
+      svgUrl.success && pngUrl.success && ogUrl.success
+        ? { svgUrl: svgUrl.data, pngUrl: pngUrl.data, ogUrl: ogUrl.data }
+        : undefined;
     return {
       id,
       slug: typeof data.slug === "string" ? data.slug : id,
@@ -40,6 +56,7 @@ export async function getServerCard(
         typeof data.createdAt === "string"
           ? data.createdAt
           : new Date(0).toISOString(),
+      ...(images ? { images } : {}),
     };
   } catch {
     return null;

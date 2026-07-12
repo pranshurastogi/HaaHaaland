@@ -1,6 +1,6 @@
-import { query } from "./_generated/server";
+import { queryGeneric } from "convex/server";
 import { v } from "convex/values";
-export const top = query({
+export const top = queryGeneric({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? 20, 50);

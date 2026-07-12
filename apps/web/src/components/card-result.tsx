@@ -5,11 +5,14 @@ import { track } from "@/lib/analytics";
 export function CardResult({
   id,
   initialCard,
+  initialImages,
 }: {
   id: string;
   initialCard: ScoutCard | null;
+  initialImages?: { svgUrl: string; pngUrl: string; ogUrl: string };
 }) {
   const [card, setCard] = useState<ScoutCard | null>(initialCard);
+  const [images, setImages] = useState(initialImages);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -29,14 +32,25 @@ export function CardResult({
         if (!r.ok) throw new Error();
         return r.json();
       })
-      .then((d) => setCard(d.card))
+      .then((data) => {
+        setCard(data.card);
+        if (data.images) setImages(data.images);
+      })
       .catch(() =>
         setError("This scout report is no longer in the dressing room."),
       );
   }, [id, initialCard]);
   useEffect(() => {
     if (card) {
-      track("result_viewed", { confidence: card.researchConfidence });
+      track("result_viewed", {
+        cardId: id,
+        confidenceBucket:
+          card.researchConfidence < 40
+            ? "low"
+            : card.researchConfidence < 70
+              ? "medium"
+              : "high",
+      });
       track("email_prompt_viewed", { cardId: id });
     }
   }, [card, id]);
@@ -304,9 +318,19 @@ export function CardResult({
         </div>
       </article>
       <div className="actions">
-        <button className="button" onClick={download}>
-          Download PNG
-        </button>
+        {images ? (
+          <a
+            className="button"
+            href={`/api/cards/${encodeURIComponent(id)}/download`}
+            onClick={() => track("download_clicked", { cardId: id })}
+          >
+            Download PNG
+          </a>
+        ) : (
+          <button className="button" onClick={download}>
+            Download PNG
+          </button>
+        )}
         <a
           className="share x"
           onClick={() => track("share_x_clicked", { cardId: id })}

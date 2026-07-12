@@ -8,7 +8,15 @@ const steps = [
   "Reviewing the tape…",
   "Calling VAR…",
 ];
-export function ScoutExperience() {
+export function ScoutExperience({
+  instagramEnabled,
+  manualPostsEnabled,
+  leaderboardEnabled,
+}: {
+  instagramEnabled: boolean;
+  manualPostsEnabled: boolean;
+  leaderboardEnabled: boolean;
+}) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState(0);
@@ -147,10 +155,12 @@ export function ScoutExperience() {
               {loading ? steps[step] : "Ready to scout a public timeline."}
             </p>
             <div className="form-grid">
-              <label>
-                Instagram <em>optional</em>
-                <input name="instagramUsername" placeholder="username" />
-              </label>
+              {instagramEnabled && (
+                <label>
+                  Instagram <em>optional</em>
+                  <input name="instagramUsername" placeholder="username" />
+                </label>
+              )}
               <label>
                 Roast intensity
                 <select name="intensity" defaultValue="derby">
@@ -160,36 +170,40 @@ export function ScoutExperience() {
                 </select>
               </label>
             </div>
-            <details>
-              <summary>Public profile looking quiet? Add sample posts</summary>
-              <p className="hint">
-                Paste up to three public excerpts. Never include private
-                messages.
-              </p>
-              {posts.map((post, i) => (
-                <textarea
-                  key={i}
-                  aria-label={`Public post excerpt ${i + 1}`}
-                  maxLength={500}
-                  value={post}
-                  onChange={(e) =>
-                    setPosts((p) =>
-                      p.map((v, j) => (j === i ? e.target.value : v)),
-                    )
-                  }
-                  placeholder="A public post excerpt…"
-                />
-              ))}
-              {posts.length < 3 && (
-                <button
-                  type="button"
-                  className="add-post"
-                  onClick={() => setPosts((p) => [...p, ""])}
-                >
-                  + Add excerpt
-                </button>
-              )}
-            </details>
+            {manualPostsEnabled && (
+              <details>
+                <summary>
+                  Public profile looking quiet? Add sample posts
+                </summary>
+                <p className="hint">
+                  Paste up to three public excerpts. Never include private
+                  messages.
+                </p>
+                {posts.map((post, i) => (
+                  <textarea
+                    key={i}
+                    aria-label={`Public post excerpt ${i + 1}`}
+                    maxLength={500}
+                    value={post}
+                    onChange={(e) =>
+                      setPosts((p) =>
+                        p.map((v, j) => (j === i ? e.target.value : v)),
+                      )
+                    }
+                    placeholder="A public post excerpt…"
+                  />
+                ))}
+                {posts.length < 3 && (
+                  <button
+                    type="button"
+                    className="add-post"
+                    onClick={() => setPosts((p) => [...p, ""])}
+                  >
+                    + Add excerpt
+                  </button>
+                )}
+              </details>
+            )}
             {error && (
               <p id="scout-error" className="error" role="alert">
                 {error}
@@ -236,24 +250,26 @@ export function ScoutExperience() {
           </p>
         </div>
       </section>
-      <section id="leaderboard" className="leaderboard">
-        <div>
-          <div className="eyebrow">LIVE TABLE</div>
-          <h2>The dressing room</h2>
-        </div>
-        <ol>
-          <li>
-            <span>1</span>
-            <b>@you, after saving</b>
-            <em>— Aura pending</em>
-          </li>
-          <li>
-            <span>2</span>
-            <b>The next brave timeline</b>
-            <em>— Scout opens soon</em>
-          </li>
-        </ol>
-      </section>
+      {leaderboardEnabled && (
+        <section id="leaderboard" className="leaderboard">
+          <div>
+            <div className="eyebrow">LIVE TABLE</div>
+            <h2>The dressing room</h2>
+          </div>
+          <ol>
+            <li>
+              <span>1</span>
+              <b>@you, after saving</b>
+              <em>— Aura pending</em>
+            </li>
+            <li>
+              <span>2</span>
+              <b>The next brave timeline</b>
+              <em>— Scout opens soon</em>
+            </li>
+          </ol>
+        </section>
+      )}
       <section id="startup" className="startup">
         <div className="tape">SECONDARY MODE · WARMING UP</div>
         <h2>Roast My Startup XI</h2>

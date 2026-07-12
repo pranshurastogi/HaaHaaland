@@ -41,6 +41,7 @@ const required = {
     "OPENAI_MODEL",
     "CONVEX_URL",
     "CONVEX_DEPLOY_KEY",
+    "CONVEX_INTERNAL_SECRET",
     "POSTHOG_API_KEY",
     "POSTHOG_HOST",
     "ELEVENLABS_API_KEY",

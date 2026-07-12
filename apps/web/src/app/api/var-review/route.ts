@@ -1,6 +1,19 @@
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
+  if (process.env.FEATURE_HERMES_VAR !== "true")
+    return NextResponse.json(
+      {
+        error: {
+          code: "HERMES_UNAVAILABLE",
+          message:
+            "VAR review is locked until one qualified referral completes and the private referee service is enabled.",
+          requestId: crypto.randomUUID(),
+          retryable: false,
+        },
+      },
+      { status: 503 },
+    );
   const api = process.env.RAILWAY_API_URL;
   const secret = process.env.INTERNAL_PROXY_SECRET;
   if (!api || !secret)

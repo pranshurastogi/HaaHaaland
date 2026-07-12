@@ -55,6 +55,9 @@ export default defineSchema({
     retryCount: v.number(),
     errorCode: v.optional(v.string()),
     idempotencyKey: v.string(),
+    requestHash: v.optional(v.string()),
+    response: v.optional(v.any()),
+    expiresAt: v.optional(v.number()),
     createdAt: v.number(),
     completedAt: v.optional(v.number()),
   })
@@ -77,7 +80,12 @@ export default defineSchema({
     .index("by_generation", ["generationId"]),
   generatedCards: defineTable({
     publicId: v.string(),
-    sessionId: v.string(),
+    sessionHash: v.string(),
+    managementTokenHash: v.string(),
+    email: v.optional(v.string()),
+    svgUrl: v.optional(v.string()),
+    pngUrl: v.optional(v.string()),
+    ogUrl: v.optional(v.string()),
     handle: v.string(),
     archetypeId: v.string(),
     card: v.any(),
@@ -136,7 +144,9 @@ export default defineSchema({
     archetypeId: v.string(),
     eligible: v.boolean(),
     updatedAt: v.number(),
-  }).index("by_aura", ["eligible", "aura"]),
+  })
+    .index("by_aura", ["eligible", "aura"])
+    .index("by_card", ["cardId"]),
   shareEvents: defineTable({
     cardId: v.string(),
     userId: v.optional(v.id("users")),

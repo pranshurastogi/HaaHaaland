@@ -23,6 +23,9 @@ import {
   type ScoutCard,
 } from "@haahaaland/shared";
 
+import { MemoryStateStore, type AppStateStore } from "./state";
+import type { CardImageStore } from "./images";
+
 export type ResearchEvidence = {
   snippets: string[];
   sources: string[];
@@ -55,32 +58,18 @@ type Config = {
   featureChallenges?: boolean;
   researchProvider?: ResearchProvider;
   cardGenerator?: CardGenerationProvider;
+  stateStore?: AppStateStore;
+  imageStore?: CardImageStore;
   durableStateReady?: boolean;
 };
-const cards = new Map<
-  string,
-  {
-    card: ScoutCard;
-    createdAt: string;
-    managementTokenHash: string;
-    sessionHash: string;
-    email?: string;
+
+function boundedSet<K, V>(map: Map<K, V>, key: K, value: V, max: number) {
+  if (!map.has(key) && map.size >= max) {
+    const oldest = map.keys().next().value as K | undefined;
+    if (oldest !== undefined) map.delete(oldest);
   }
->();
-const challenges = new Map<
-  string,
-  {
-    cardId: string;
-    challengerSessionHash: string;
-    friendHandle?: string;
-    acceptedCardId?: string;
-    acceptedSessionId?: string;
-    result?: { winnerCardId: string; verdict: string };
-    credited: boolean;
-    createdAt: string;
-    completedAt?: string;
-  }
->();
+  map.set(key, value);
+}
 
 const RESEARCH_QUERY_VERSION = "linkup-profile-v1";
 const MAX_RESEARCH_CACHE_ENTRIES = 500;
@@ -372,6 +361,7 @@ async function generateWithLlm(
 }
 
 export function buildApp(config: Config) {
+  const state = config.stateStore ?? new MemoryStateStore();
   const app = Fastify({
     logger:
       process.env.NODE_ENV === "test"
@@ -395,16 +385,7 @@ export function buildApp(config: Config) {
     bodyLimit: 32_000,
     requestTimeout: 30_000,
   });
-  const idempotentGenerations = new Map<
-    string,
-    { requestHash: string; response?: unknown; expiresAt: number }
-  >();
   const lastGenerationByHandle = new Map<string, number>();
-  const shareEvents: Array<{
-    cardId: string;
-    channel: string;
-    createdAt: string;
-  }> = [];
   let generationDay = new Date().toISOString().slice(0, 10);
   let dailyGenerations = 0;
 
@@ -438,7 +419,8 @@ export function buildApp(config: Config) {
   });
 
   const durableStateReady =
-    config.durableStateReady ?? process.env.NODE_ENV !== "production";
+    config.durableStateReady ??
+    (state.durable || process.env.NODE_ENV !== "production");
   app.get("/health", async () => ({ ok: true, service: "haahaaland-api" }));
   app.get("/ready", async (_request, reply) =>
     reply
@@ -498,40 +480,15 @@ export function buildApp(config: Config) {
 
     const idempotencyKey = request.headers["idempotency-key"];
     const requestHash = hashValue(JSON.stringify(parsed.data));
-    if (typeof idempotencyKey === "string") {
-      if (!/^[A-Za-z0-9_-]{16,100}$/.test(idempotencyKey))
-        return reply
-          .code(400)
-          .send(
-            apiError(request.id, "INVALID_INPUT", "Invalid idempotency key."),
-          );
-      const existing = idempotentGenerations.get(idempotencyKey);
-      if (existing && existing.expiresAt <= Date.now())
-        idempotentGenerations.delete(idempotencyKey);
-      else if (existing) {
-        if (!secureEqual(existing.requestHash, requestHash))
-          return reply
-            .code(409)
-            .send(
-              apiError(
-                request.id,
-                "INVALID_INPUT",
-                "Idempotency key was already used for another request.",
-              ),
-            );
-        if (existing.response) return reply.code(200).send(existing.response);
-        return reply
-          .code(409)
-          .send(
-            apiError(
-              request.id,
-              "RATE_LIMITED",
-              "An identical generation is already in progress.",
-              true,
-            ),
-          );
-      }
-    }
+    if (
+      typeof idempotencyKey === "string" &&
+      !/^[A-Za-z0-9_-]{16,100}$/.test(idempotencyKey)
+    )
+      return reply
+        .code(400)
+        .send(
+          apiError(request.id, "INVALID_INPUT", "Invalid idempotency key."),
+        );
 
     const today = new Date().toISOString().slice(0, 10);
     if (today !== generationDay) {
@@ -566,19 +523,38 @@ export function buildApp(config: Config) {
           ),
         );
 
-    lastGenerationByHandle.set(parsed.data.xUsername, now);
+    const begun = await state.beginGeneration(
+      typeof idempotencyKey === "string" ? idempotencyKey : undefined,
+      requestHash,
+      randomUUID(),
+      request.id,
+    );
+    if (begun.status === "complete")
+      return reply.code(200).send(begun.response);
+    if (begun.status === "conflict")
+      return reply
+        .code(409)
+        .send(
+          apiError(
+            request.id,
+            "INVALID_INPUT",
+            "Idempotency key was already used for another request.",
+          ),
+        );
+    if (begun.status === "in_progress")
+      return reply
+        .code(409)
+        .send(
+          apiError(
+            request.id,
+            "RATE_LIMITED",
+            "An identical generation is already in progress.",
+            true,
+          ),
+        );
+    const id = begun.publicId;
+    boundedSet(lastGenerationByHandle, parsed.data.xUsername, now, 10_000);
     dailyGenerations += 1;
-    if (typeof idempotencyKey === "string") {
-      while (idempotentGenerations.size >= 10_000) {
-        const oldest = idempotentGenerations.keys().next().value;
-        if (!oldest) break;
-        idempotentGenerations.delete(oldest);
-      }
-      idempotentGenerations.set(idempotencyKey, {
-        requestHash,
-        expiresAt: now + 24 * 60 * 60 * 1000,
-      });
-    }
 
     const started = Date.now();
     let evidence: ResearchEvidence;
@@ -637,13 +613,27 @@ export function buildApp(config: Config) {
         parsed.data.intensity,
       );
     const safety = enforceCardSafety(rawCard, parsed.data.intensity);
-    const id = randomUUID();
     const managementToken = randomBytes(32).toString("base64url");
     const sessionId = parsed.data.sessionId;
+    let images;
+    if (config.imageStore) {
+      try {
+        images = await config.imageStore.store(id, safety.card);
+      } catch (error) {
+        request.log.warn(
+          {
+            stage: "card_image_store_failed",
+            errorName: error instanceof Error ? error.name : "UnknownError",
+          },
+          "persistent card image storage failed",
+        );
+      }
+    }
     const response = {
       id,
       slug: id,
       managementToken,
+      ...(images ? { images } : {}),
       card: safety.card,
       meta: {
         model: generated
@@ -657,18 +647,24 @@ export function buildApp(config: Config) {
         effectiveIntensity: safety.intensity,
       },
     };
-    cards.set(id, {
+    await state.putCard(id, {
       card: safety.card,
       createdAt: new Date().toISOString(),
       managementTokenHash: hashValue(managementToken),
       sessionHash: hashValue(sessionId),
+      generationMeta: {
+        model: response.meta.model,
+        promptVersion: response.meta.promptVersion,
+        taxonomyVersion: response.meta.taxonomyVersion,
+        durationMs: response.meta.durationMs,
+        retryCount: response.meta.retryCount,
+      },
+      ...(images ? { images } : {}),
     });
-    if (typeof idempotencyKey === "string")
-      idempotentGenerations.set(idempotencyKey, {
-        requestHash,
-        response,
-        expiresAt: now + 24 * 60 * 60 * 1000,
-      });
+    await state.completeGeneration(
+      typeof idempotencyKey === "string" ? idempotencyKey : undefined,
+      response,
+    );
     request.log.info(
       {
         stage: "generation_completed",
@@ -686,7 +682,7 @@ export function buildApp(config: Config) {
   app.post("/v1/generations", scoutProfile);
 
   const getCard = async (request: any, reply: any) => {
-    const found = cards.get(request.params.id);
+    const found = await state.getCard(request.params.id);
     return found
       ? {
           id: request.params.id,
@@ -694,6 +690,7 @@ export function buildApp(config: Config) {
           card: found.card,
           createdAt: found.createdAt,
           saved: Boolean(found.email),
+          ...(found.images ? { images: found.images } : {}),
         }
       : reply
           .code(404)
@@ -713,7 +710,7 @@ export function buildApp(config: Config) {
         .send(
           apiError(request.id, "INVALID_INPUT", "Enter a valid email address."),
         );
-    const found = cards.get(parsed.data.cardId);
+    const found = await state.getCard(parsed.data.cardId);
     if (!found)
       return reply
         .code(404)
@@ -722,27 +719,32 @@ export function buildApp(config: Config) {
       return reply
         .code(403)
         .send(apiError(request.id, "UNAUTHORIZED", "Card ownership required."));
-    found.email = parsed.data.email;
-    return reply.code(200).send({ saved: true });
+    const saved = await state.saveCard(parsed.data.cardId, parsed.data.email);
+    return reply
+      .code(saved ? 200 : 404)
+      .send(
+        saved
+          ? { saved: true }
+          : apiError(request.id, "NOT_FOUND", "Scout card not found."),
+      );
   };
   app.post("/v1/cards/:id/save", saveCard);
   app.post("/v1/cards/save", saveCard);
 
   app.post("/v1/cards/:id/share", async (request: any, reply) => {
-    if (!cards.has(request.params.id))
-      return reply
-        .code(404)
-        .send(apiError(request.id, "NOT_FOUND", "Scout card not found."));
     const parsed = ShareEventSchema.safeParse(request.body);
     if (!parsed.success)
       return reply
         .code(400)
         .send(apiError(request.id, "INVALID_INPUT", "Invalid share event."));
-    shareEvents.push({
-      cardId: request.params.id,
-      channel: parsed.data.channel,
-      createdAt: new Date().toISOString(),
-    });
+    const recorded = await state.recordShare(
+      request.params.id,
+      parsed.data.channel,
+    );
+    if (!recorded)
+      return reply
+        .code(404)
+        .send(apiError(request.id, "NOT_FOUND", "Scout card not found."));
     return reply.code(202).send({ recorded: true });
   });
 
@@ -759,7 +761,7 @@ export function buildApp(config: Config) {
         return reply
           .code(400)
           .send(apiError(request.id, "INVALID_INPUT", "Invalid challenge."));
-      const sourceCard = cards.get(parsed.data.cardId);
+      const sourceCard = await state.getCard(parsed.data.cardId);
       if (!sourceCard)
         return reply
           .code(404)
@@ -771,7 +773,7 @@ export function buildApp(config: Config) {
             apiError(request.id, "UNAUTHORIZED", "Card ownership required."),
           );
       const slug = randomUUID().replaceAll("-", "");
-      challenges.set(slug, {
+      await state.putChallenge(slug, {
         cardId: parsed.data.cardId,
         challengerSessionHash: hashValue(parsed.data.sessionId),
         ...(parsed.data.friendHandle
@@ -785,12 +787,12 @@ export function buildApp(config: Config) {
   );
 
   app.get("/v1/challenges/:slug", async (request: any, reply) => {
-    const challenge = challenges.get(request.params.slug);
+    const challenge = await state.getChallenge(request.params.slug);
     if (!challenge)
       return reply
         .code(404)
         .send(apiError(request.id, "NOT_FOUND", "Challenge not found."));
-    const source = cards.get(challenge.cardId);
+    const source = await state.getCard(challenge.cardId);
     return {
       slug: request.params.slug,
       status: challenge.completedAt ? "completed" : "pending",
@@ -807,7 +809,7 @@ export function buildApp(config: Config) {
   });
 
   app.post("/v1/challenges/:slug/accept", async (request: any, reply) => {
-    const challenge = challenges.get(request.params.slug);
+    const challenge = await state.getChallenge(request.params.slug);
     const parsed = ChallengeAcceptSchema.safeParse(request.body);
     if (!challenge)
       return reply
@@ -824,8 +826,8 @@ export function buildApp(config: Config) {
           ),
         );
     if (challenge.completedAt) return reply.code(200).send(challenge.result);
-    const challenger = cards.get(challenge.cardId);
-    const accepted = cards.get(parsed.data.acceptedCardId);
+    const challenger = await state.getCard(challenge.cardId);
+    const accepted = await state.getCard(parsed.data.acceptedCardId);
     if (!challenger || !accepted)
       return reply
         .code(404)
@@ -871,26 +873,25 @@ export function buildApp(config: Config) {
       score(challenger.card) >= score(accepted.card)
         ? challenge.cardId
         : parsed.data.acceptedCardId;
-    challenge.acceptedCardId = parsed.data.acceptedCardId;
-    challenge.acceptedSessionId = parsed.data.sessionId;
-    challenge.completedAt = new Date().toISOString();
-    challenge.result = {
+    const result = {
       winnerCardId,
       verdict:
         winnerCardId === challenge.cardId
           ? "The challenger controls midfield and edges the tie."
           : "The response card overturns the pre-match prediction.",
     };
-    // Credits stay locked until the challenge/referral ledger is durable and abuse-checked.
-    challenge.credited = false;
-    return reply.code(200).send(challenge.result);
+    const completed = await state.completeChallenge(
+      request.params.slug,
+      parsed.data.acceptedCardId,
+      acceptedSessionHash,
+      result,
+    );
+    return reply.code(200).send(completed?.result ?? result);
   });
 
   app.get("/v1/referrals/me", async (request: any) => {
     const cardId = String(request.query?.cardId ?? "");
-    const completed = [...challenges.values()].filter(
-      (challenge) => challenge.cardId === cardId && challenge.credited,
-    ).length;
+    const completed = await state.countCredits(cardId);
     return {
       completed,
       varUnlocked: completed >= Number(process.env.REFERRALS_FOR_VAR ?? 1),
@@ -910,18 +911,14 @@ export function buildApp(config: Config) {
       ),
   );
 
-  app.get("/v1/leaderboard", async () => ({
-    entries: [...cards.entries()]
-      .filter(([, value]) => value.email)
-      .slice(-20)
-      .reverse()
-      .map(([id, value], index) => ({
+  app.get("/v1/leaderboard", async () => {
+    const entries = await state.topLeaderboard(20);
+    return {
+      entries: entries.map((entry, index) => ({
         rank: index + 1,
-        id,
-        handle: value.card.handle,
-        archetypeId: value.card.primaryArchetypeId,
-        aura: value.card.stats.find((stat) => stat.key === "aura")?.value ?? 0,
+        ...entry,
       })),
-  }));
+    };
+  });
   return app;
 }

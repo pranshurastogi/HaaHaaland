@@ -1,7 +1,7 @@
-import { internalMutation, internalQuery } from "./_generated/server";
+import { internalMutationGeneric, internalQueryGeneric } from "convex/server";
 import { v } from "convex/values";
 
-export const getProgress = internalQuery({
+export const getProgress = internalQueryGeneric({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
     const credits = await ctx.db
@@ -19,7 +19,7 @@ export const getProgress = internalQuery({
   },
 });
 
-export const creditQualifiedReferralInternal = internalMutation({
+export const creditQualifiedReferralInternal = internalMutationGeneric({
   args: {
     challengeSlug: v.string(),
     referrerUserId: v.id("users"),

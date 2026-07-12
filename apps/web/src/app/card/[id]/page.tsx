@@ -17,6 +17,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     0,
     190,
   );
+  const ogImage = found.images?.ogUrl ?? `/card/${id}/opengraph-image`;
   return {
     title,
     description,
@@ -25,15 +26,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       title,
       description,
       type: "article",
-      images: [
-        { url: `/card/${id}/opengraph-image`, width: 1200, height: 630 },
-      ],
+      images: [{ url: ogImage, width: 1200, height: 630 }],
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
-      images: [`/card/${id}/opengraph-image`],
+      images: [ogImage],
     },
   };
 }
@@ -51,7 +50,11 @@ export default async function CardPage({ params }: Props) {
           Scout yourself
         </a>
       </header>
-      <CardResult id={id} initialCard={found?.card ?? null} />
+      <CardResult
+        id={id}
+        initialCard={found?.card ?? null}
+        {...(found?.images ? { initialImages: found.images } : {})}
+      />
     </main>
   );
 }

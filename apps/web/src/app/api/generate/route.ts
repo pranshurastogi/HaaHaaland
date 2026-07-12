@@ -66,6 +66,10 @@ export async function POST(request: Request) {
     const parsedRequest = GenerationRequestSchema.parse(body);
     const result = localScout(body);
     const managementToken = `${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
+    if (cardStore.size >= 5_000) {
+      const oldest = cardStore.keys().next().value;
+      if (oldest) cardStore.delete(oldest);
+    }
     cardStore.set(result.id, {
       card: result.card,
       createdAt: new Date().toISOString(),

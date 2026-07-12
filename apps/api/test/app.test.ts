@@ -26,6 +26,25 @@ describe("API", () => {
     expect(response.json()).toEqual({ ready: true });
   });
 
+  it("fails readiness and protected routes when durable state is absent", async () => {
+    const app = buildApp({
+      proxySecret: "test-secret",
+      durableStateReady: false,
+    });
+    apps.push(app);
+    expect(
+      (await app.inject({ method: "GET", url: "/ready" })).statusCode,
+    ).toBe(503);
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/scout/profile",
+      headers: proxyHeaders,
+      payload: { xUsername: "blockedfc", sessionId },
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.json().error.code).toBe("CONVEX_UNAVAILABLE");
+  });
+
   it("rejects generation without the proxy secret", async () => {
     const app = buildApp({ proxySecret: "test-secret" });
     apps.push(app);

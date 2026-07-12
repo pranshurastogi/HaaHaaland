@@ -98,6 +98,10 @@ export async function POST(request: Request) {
       { status: 403 },
     );
   const slug = crypto.randomUUID().replaceAll("-", "");
+  if (challengeStore.size >= 5_000) {
+    const oldest = challengeStore.keys().next().value;
+    if (oldest) challengeStore.delete(oldest);
+  }
   challengeStore.set(slug, {
     cardId: parsed.data.cardId,
     challengerSessionHash: await hashCapability(parsed.data.sessionId),

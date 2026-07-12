@@ -1,5 +1,14 @@
 import { ScoutExperience } from "@/components/scout-experience";
+
+const enabled = (name: string, fallback: boolean) => {
+  const value = process.env[name];
+  return value === undefined ? fallback : value === "true";
+};
+
 export default function Home() {
+  const instagramEnabled = enabled("FEATURE_INSTAGRAM_INPUT", true);
+  const manualPostsEnabled = enabled("FEATURE_MANUAL_POSTS", true);
+  const leaderboardEnabled = enabled("FEATURE_LEADERBOARD", true);
   return (
     <main>
       <header className="nav">
@@ -9,11 +18,17 @@ export default function Home() {
         <span className="nav-copy">
           Your timeline, scouted. Your ego, benched.
         </span>
-        <a className="text-link" href="#leaderboard">
-          Leaderboard
-        </a>
+        {leaderboardEnabled && (
+          <a className="text-link" href="#leaderboard">
+            Leaderboard
+          </a>
+        )}
       </header>
-      <ScoutExperience />
+      <ScoutExperience
+        instagramEnabled={instagramEnabled}
+        manualPostsEnabled={manualPostsEnabled}
+        leaderboardEnabled={leaderboardEnabled}
+      />
     </main>
   );
 }

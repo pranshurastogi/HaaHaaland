@@ -1,6 +1,6 @@
-import { internalMutation, query } from "./_generated/server";
+import { internalMutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
-export const getPublic = query({
+export const getPublic = queryGeneric({
   args: { publicId: v.string() },
   handler: async (ctx, args) => {
     const card = await ctx.db
@@ -17,10 +17,11 @@ export const getPublic = query({
     };
   },
 });
-export const storeInternal = internalMutation({
+export const storeInternal = internalMutationGeneric({
   args: {
     publicId: v.string(),
-    sessionId: v.string(),
+    sessionHash: v.string(),
+    managementTokenHash: v.string(),
     handle: v.string(),
     archetypeId: v.string(),
     card: v.any(),
@@ -34,7 +35,7 @@ export const storeInternal = internalMutation({
   handler: async (ctx, args) =>
     ctx.db.insert("generatedCards", { ...args, createdAt: Date.now() }),
 });
-export const markViewedInternal = internalMutation({
+export const markViewedInternal = internalMutationGeneric({
   args: { publicId: v.string() },
   handler: async (ctx, args) => {
     const card = await ctx.db
