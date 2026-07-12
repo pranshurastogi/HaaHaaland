@@ -9,7 +9,10 @@ declare global {
   }
 }
 
-const modules = import.meta.glob("./**/*.ts");
+const modules = {
+  ...import.meta.glob("./**/*.ts"),
+  "./_generated/server.ts": async () => ({}),
+};
 const secret = "convex_test_secret_placeholder_123456";
 const mutation = (name: string) =>
   makeFunctionReference<"mutation", any, any>(name);
