@@ -16,20 +16,34 @@ export async function POST(request: Request) {
       },
       { status: 503 },
     );
-  const response = await fetch(`${api.replace(/\/$/, "")}/v1/var-review`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-haahaaland-proxy-secret": secret,
-    },
-    body: JSON.stringify(await request.json().catch(() => null)),
-    signal: AbortSignal.timeout(8_000),
-  });
-  return new NextResponse(await response.text(), {
-    status: response.status,
-    headers: {
-      "content-type": "application/json",
-      "cache-control": "no-store",
-    },
-  });
+  try {
+    const response = await fetch(`${api.replace(/\/$/, "")}/v1/var-review`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-haahaaland-proxy-secret": secret,
+      },
+      body: JSON.stringify(await request.json().catch(() => null)),
+      signal: AbortSignal.timeout(8_000),
+    });
+    return new NextResponse(await response.text(), {
+      status: response.status,
+      headers: {
+        "content-type": "application/json",
+        "cache-control": "no-store",
+      },
+    });
+  } catch {
+    return NextResponse.json(
+      {
+        error: {
+          code: "HERMES_UNAVAILABLE",
+          message: "VAR review is temporarily unavailable.",
+          requestId: crypto.randomUUID(),
+          retryable: true,
+        },
+      },
+      { status: 503 },
+    );
+  }
 }

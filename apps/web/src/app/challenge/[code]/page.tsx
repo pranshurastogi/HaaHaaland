@@ -17,15 +17,19 @@ async function getChallenge(slug: string): Promise<ChallengeView | null> {
   const api = process.env.RAILWAY_API_URL;
   const secret = process.env.INTERNAL_PROXY_SECRET;
   if (api && secret) {
-    const response = await fetch(
-      `${api.replace(/\/$/, "")}/v1/challenges/${encodeURIComponent(slug)}`,
-      {
-        headers: { "x-haahaaland-proxy-secret": secret },
-        signal: AbortSignal.timeout(8_000),
-        cache: "no-store",
-      },
-    );
-    return response.ok ? ((await response.json()) as ChallengeView) : null;
+    try {
+      const response = await fetch(
+        `${api.replace(/\/$/, "")}/v1/challenges/${encodeURIComponent(slug)}`,
+        {
+          headers: { "x-haahaaland-proxy-secret": secret },
+          signal: AbortSignal.timeout(8_000),
+          cache: "no-store",
+        },
+      );
+      return response.ok ? ((await response.json()) as ChallengeView) : null;
+    } catch {
+      return null;
+    }
   }
   const challenge = challengeStore.get(slug);
   if (!challenge) return null;
