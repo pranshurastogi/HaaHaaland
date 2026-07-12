@@ -8,6 +8,7 @@ import {
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
+import { PostHog } from "posthog-node";
 import { ARCHETYPES, TAXONOMY_VERSION } from "@haahaaland/archetypes";
 import {
   ChallengeAcceptSchema,
@@ -25,6 +26,13 @@ import {
 
 import { MemoryStateStore, type AppStateStore } from "./state";
 import type { CardImageStore } from "./images";
+
+export const posthog = process.env.POSTHOG_API_KEY
+  ? new PostHog(process.env.POSTHOG_API_KEY, {
+      host: process.env.POSTHOG_HOST ?? "https://us.i.posthog.com",
+      enableExceptionAutocapture: true,
+    })
+  : null;
 
 export type ResearchEvidence = {
   snippets: string[];
@@ -404,6 +412,13 @@ export function buildApp(config: Config) {
     const status = statusCode === 429 ? 429 : 500;
     const code = status === 429 ? "RATE_LIMITED" : "INTERNAL_ERROR";
     request.log.error({ err: error, code }, "request failed");
+    if (status === 500) {
+      posthog?.captureException(error, undefined, {
+        url: request.url,
+        method: request.method,
+        request_id: request.id,
+      });
+    }
     void reply
       .code(status)
       .send(
@@ -556,6 +571,17 @@ export function buildApp(config: Config) {
     boundedSet(lastGenerationByHandle, parsed.data.xUsername, now, 10_000);
     dailyGenerations += 1;
 
+    posthog?.capture({
+      distinctId: parsed.data.sessionId,
+      event: "generation_started",
+      properties: {
+        intensity: parsed.data.intensity,
+        has_manual_posts: parsed.data.manualPosts.length > 0,
+        has_referral: Boolean(parsed.data.referralCode),
+        card_id: id,
+      },
+    });
+
     const started = Date.now();
     let evidence: ResearchEvidence;
     try {
@@ -585,6 +611,22 @@ export function buildApp(config: Config) {
       },
       "research stage completed",
     );
+    posthog?.capture({
+      distinctId: parsed.data.sessionId,
+      event: "research_completed",
+      properties: {
+        confidence: evidence.confidence,
+        confidence_bucket:
+          evidence.confidence < 40
+            ? "low"
+            : evidence.confidence < 70
+              ? "medium"
+              : "high",
+        cache_hit: evidence.cacheHit ?? false,
+        error_category: evidence.errorCategory ?? null,
+        card_id: id,
+      },
+    });
     let generated: { card: ScoutCard; retryCount: number } | null = null;
     try {
       generated = config.cardGenerator
@@ -675,6 +717,23 @@ export function buildApp(config: Config) {
       },
       "generation completed",
     );
+    posthog?.capture({
+      distinctId: parsed.data.sessionId,
+      event: "generation_completed",
+      properties: {
+        card_id: id,
+        model: response.meta.model,
+        fallback: response.meta.model === "deterministic-fallback",
+        retry_count: response.meta.retryCount,
+        duration_ms: response.meta.durationMs,
+        intensity: response.meta.effectiveIntensity,
+        archetype: safety.card.primaryArchetypeId,
+        confidence: safety.card.researchConfidence,
+        safety_flags: safety.card.safetyFlags,
+        has_images: Boolean(images),
+      },
+    });
+    await posthog?.flush();
     return reply.code(201).send(response);
   };
 
@@ -720,6 +779,14 @@ export function buildApp(config: Config) {
         .code(403)
         .send(apiError(request.id, "UNAUTHORIZED", "Card ownership required."));
     const saved = await state.saveCard(parsed.data.cardId, parsed.data.email);
+    if (saved) {
+      posthog?.capture({
+        distinctId: parsed.data.cardId,
+        event: "email_saved",
+        properties: { card_id: parsed.data.cardId },
+      });
+      await posthog?.flush();
+    }
     return reply
       .code(saved ? 200 : 404)
       .send(
@@ -745,6 +812,15 @@ export function buildApp(config: Config) {
       return reply
         .code(404)
         .send(apiError(request.id, "NOT_FOUND", "Scout card not found."));
+    posthog?.capture({
+      distinctId: request.params.id,
+      event: "share_recorded",
+      properties: {
+        channel: parsed.data.channel,
+        card_id: request.params.id,
+      },
+    });
+    await posthog?.flush();
     return reply.code(202).send({ recorded: true });
   });
 
@@ -782,6 +858,16 @@ export function buildApp(config: Config) {
         credited: false,
         createdAt: new Date().toISOString(),
       });
+      posthog?.capture({
+        distinctId: parsed.data.sessionId,
+        event: "challenge_created",
+        properties: {
+          card_id: parsed.data.cardId,
+          has_friend_handle: Boolean(parsed.data.friendHandle),
+          challenge_slug: slug,
+        },
+      });
+      await posthog?.flush();
       return reply.code(201).send({ slug, url: `/challenge/${slug}` });
     },
   );
@@ -886,6 +972,18 @@ export function buildApp(config: Config) {
       acceptedSessionHash,
       result,
     );
+    posthog?.capture({
+      distinctId: parsed.data.sessionId,
+      event: "challenge_accepted",
+      properties: {
+        challenge_slug: request.params.slug,
+        accepted_card_id: parsed.data.acceptedCardId,
+        challenger_card_id: challenge.cardId,
+        winner_card_id: result.winnerCardId,
+        is_winner: result.winnerCardId === parsed.data.acceptedCardId,
+      },
+    });
+    await posthog?.flush();
     return reply.code(200).send(completed?.result ?? result);
   });
 

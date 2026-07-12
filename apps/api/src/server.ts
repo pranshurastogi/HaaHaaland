@@ -1,4 +1,4 @@
-import { buildApp } from "./app";
+import { buildApp, posthog } from "./app";
 import { ConvexStateStore } from "./state";
 import { R2CardImageStore } from "./images";
 
@@ -101,6 +101,7 @@ async function shutdown(signal: string) {
   const timer = setTimeout(() => process.exit(1), 10_000).unref();
   try {
     await app.close();
+    await posthog?.shutdown();
     clearTimeout(timer);
   } catch (error) {
     app.log.error(
