@@ -1,6 +1,7 @@
 name: CI
 on: [push, pull_request]
 permissions: { contents: read }
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -11,10 +12,51 @@ jobs:
         with: { version: 10.15.1 }
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: pnpm }
+      - run: corepack enable
       - run: pnpm install --frozen-lockfile
-      - run: pnpm security:secrets
-      - run: pnpm format
-      - run: pnpm lint
-      - run: pnpm typecheck
-      - run: pnpm test
-      - run: pnpm build
+      - run: pnpm check
+
+  e2e:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.15.1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @haahaaland/web exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+
+  cloudflare-runtime:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.15.1 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @haahaaland/web exec opennextjs-cloudflare build
+      - name: Smoke OpenNext workerd runtime
+        env:
+          LOCAL_FALLBACK_ENABLED: "true"
+        run: |
+          pnpm --filter @haahaaland/web exec opennextjs-cloudflare preview > /tmp/haahaaland-preview.log 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 45); do
+            if curl --fail --silent http://127.0.0.1:8787/ >/dev/null; then
+              node scripts/smoke-test.mjs http://127.0.0.1:8787
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/haahaaland-preview.log
+          exit 1

@@ -17,11 +17,21 @@ export function ScoutExperience() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
-    track("landing_viewed");
+    track("landing_view");
+    track("example_card_view");
+    const referral = new URLSearchParams(window.location.search).get("ref");
+    if (referral && /^[A-Za-z0-9_-]{8,80}$/.test(referral)) {
+      sessionStorage.setItem("hhl:referral", referral);
+      track("referral_landed", { referralPresent: true });
+    }
   }, []);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
+    track("username_submitted", {
+      referralPresent: Boolean(sessionStorage.getItem("hhl:referral")),
+    });
+    track("research_started");
     track("generation_started");
     setLoading(true);
     setError("");
@@ -31,20 +41,65 @@ export function ScoutExperience() {
       550,
     );
     try {
+      let sessionId = localStorage.getItem("hhl:session-id");
+      if (!sessionId) {
+        sessionId = crypto.randomUUID();
+        localStorage.setItem("hhl:session-id", sessionId);
+      }
       const response = await fetch("/api/generate", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": crypto.randomUUID(),
+        },
         body: JSON.stringify({
           xUsername: formData.get("xUsername"),
           instagramUsername: formData.get("instagramUsername"),
           manualPosts: posts.filter(Boolean),
           intensity: formData.get("intensity"),
+          referralCode: sessionStorage.getItem("hhl:referral") ?? undefined,
+          sessionId,
         }),
       });
       const data = await response.json();
       if (!response.ok)
-        throw new Error(data.message ?? "The scout lost the tape. Try again.");
+        throw new Error(
+          data.error?.message ??
+            data.message ??
+            "The scout lost the tape. Try again.",
+        );
+      track("research_completed", {
+        confidenceBucket:
+          data.card.researchConfidence < 40
+            ? "low"
+            : data.card.researchConfidence < 70
+              ? "medium"
+              : "high",
+      });
+      if (data.card.researchConfidence < 40) track("research_low_confidence");
+      if (sessionStorage.getItem("hhl:referral"))
+        track("referral_generation_completed");
       sessionStorage.setItem(`card:${data.id}`, JSON.stringify(data.card));
+      sessionStorage.setItem(`card:${data.id}:token`, data.managementToken);
+      const referral = sessionStorage.getItem("hhl:referral");
+      if (referral) {
+        const accepted = await fetch(
+          `/api/challenges/${encodeURIComponent(referral)}`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              acceptedCardId: data.id,
+              managementToken: data.managementToken,
+              sessionId,
+            }),
+          },
+        ).catch(() => null);
+        if (accepted?.ok) {
+          track("challenge_accepted", { cardId: data.id });
+          sessionStorage.removeItem("hhl:referral");
+        }
+      }
       track("generation_completed", {
         confidence: data.card.researchConfidence,
         fallback: data.meta?.model === "deterministic-fallback",
@@ -81,11 +136,16 @@ export function ScoutExperience() {
                 maxLength={50}
                 autoComplete="off"
                 placeholder="yourhandle"
+                onFocus={() => track("username_input_started")}
+                aria-describedby={error ? "scout-error" : undefined}
               />
               <button className="button" disabled={loading || !mounted}>
                 {loading ? steps[step] : "Scout My Timeline"}
               </button>
             </div>
+            <p className="sr-only" role="status" aria-live="polite">
+              {loading ? steps[step] : "Ready to scout a public timeline."}
+            </p>
             <div className="form-grid">
               <label>
                 Instagram <em>optional</em>
@@ -131,7 +191,7 @@ export function ScoutExperience() {
               )}
             </details>
             {error && (
-              <p className="error" role="alert">
+              <p id="scout-error" className="error" role="alert">
                 {error}
               </p>
             )}
@@ -206,7 +266,7 @@ export function ScoutExperience() {
         <b>HaaHaaLand</b>
         <span>
           Playful comparisons based on public evidence. Not affiliated with any
-          player, club, league, or football game.
+          player, club, league, or football game. <a href="/privacy">Privacy</a>
         </span>
       </footer>
     </>

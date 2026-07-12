@@ -1,5 +1,6 @@
+import type { AnalyticsEventName } from "@haahaaland/shared";
 type Props = Record<string, string | number | boolean | undefined>;
-export function track(event: string, properties: Props = {}) {
+export function track(event: AnalyticsEventName, properties: Props = {}) {
   if (typeof window === "undefined") return;
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
   const host = process.env.NEXT_PUBLIC_POSTHOG_HOST?.replace(/\/$/, "");

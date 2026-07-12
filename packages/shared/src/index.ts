@@ -1,4 +1,5 @@
 import { z } from "zod";
+export { renderScoutCardSvg, type CardImageVariant } from "./card-render";
 
 export const ARCHETYPE_IDS = [
   "haaland",
@@ -52,6 +53,32 @@ export function normalizeXHandle(value: string): string {
   return candidate.toLowerCase();
 }
 
+export function normalizeInstagramHandle(value: string): string {
+  let candidate = value.trim();
+  if (/^https?:\/\//i.test(candidate)) {
+    const url = new URL(candidate);
+    if (
+      !["instagram.com", "www.instagram.com"].includes(
+        url.hostname.toLowerCase(),
+      ) ||
+      url.search ||
+      url.hash
+    )
+      throw new Error("Enter an Instagram profile URL");
+    const parts = url.pathname.split("/").filter(Boolean);
+    if (parts.length !== 1) throw new Error("Enter an Instagram profile URL");
+    candidate = parts[0] ?? "";
+  }
+  candidate = candidate.replace(/^@/, "");
+  if (!/^[A-Za-z0-9._]{1,30}$/.test(candidate))
+    throw new Error("Enter a valid Instagram username");
+  return candidate.toLowerCase();
+}
+
+export function normalizeEmail(value: string): string {
+  return z.string().trim().email().max(254).parse(value).toLowerCase();
+}
+
 export const XHandleSchema = z.string().transform((value, ctx) => {
   try {
     return normalizeXHandle(value);
@@ -65,11 +92,20 @@ export const XHandleSchema = z.string().transform((value, ctx) => {
 });
 export const InstagramHandleSchema = z
   .string()
-  .trim()
-  .max(30)
-  .regex(/^[A-Za-z0-9._]+$/)
-  .optional()
-  .or(z.literal(""));
+  .transform((value, ctx) => {
+    if (!value.trim()) return "";
+    try {
+      return normalizeInstagramHandle(value);
+    } catch (error) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          error instanceof Error ? error.message : "Invalid Instagram username",
+      });
+      return z.NEVER;
+    }
+  })
+  .optional();
 export const ManualPostsSchema = z
   .array(z.string().trim().min(1).max(500))
   .max(3)
@@ -103,6 +139,14 @@ const blockedHost = (host: string) => {
     );
   return false;
 };
+export const PublicHttpUrlSchema = z
+  .string()
+  .url()
+  .refine((value) => {
+    const protocol = new URL(value).protocol;
+    return protocol === "http:" || protocol === "https:";
+  }, "Source URLs must use HTTP or HTTPS");
+
 export const ProductUrlSchema = z
   .string()
   .url()
@@ -138,6 +182,7 @@ export const GenerationRequestSchema = z.object({
   manualPosts: ManualPostsSchema,
   intensity: IntensitySchema.default("derby"),
   referralCode: z.string().max(64).optional(),
+  sessionId: z.string().uuid(),
 });
 const StatKeySchema = z.enum([
   "aura",
@@ -181,14 +226,236 @@ export const ScoutCardSchema = z.object({
   shareCopy: z.string().max(260),
   challengeCopy: z.string().max(260),
   safetyFlags: z.array(z.string()),
-  sourcesUsed: z.array(z.string().url()).max(10),
+  sourcesUsed: z.array(PublicHttpUrlSchema).max(10),
 });
 export type ScoutCard = z.infer<typeof ScoutCardSchema>;
+
+export const API_ERROR_CODES = [
+  "INVALID_INPUT",
+  "RATE_LIMITED",
+  "RESEARCH_NOT_FOUND",
+  "RESEARCH_TIMEOUT",
+  "MODEL_TIMEOUT",
+  "MODEL_INVALID_OUTPUT",
+  "SAFETY_REJECTED",
+  "IMAGE_RENDER_FAILED",
+  "STORAGE_FAILED",
+  "HERMES_UNAVAILABLE",
+  "CONVEX_UNAVAILABLE",
+  "NOT_FOUND",
+  "UNAUTHORIZED",
+  "INTERNAL_ERROR",
+] as const;
+export const ApiErrorSchema = z.object({
+  error: z.object({
+    code: z.enum(API_ERROR_CODES),
+    message: z.string().max(240),
+    requestId: z.string().min(1).max(100),
+    retryable: z.boolean(),
+  }),
+});
+export type ApiError = z.infer<typeof ApiErrorSchema>;
+
+export const EVENT_NAMES = [
+  "landing_view",
+  "example_card_view",
+  "username_input_started",
+  "username_submitted",
+  "research_started",
+  "research_cache_hit",
+  "research_completed",
+  "research_low_confidence",
+  "research_failed",
+  "generation_started",
+  "generation_completed",
+  "generation_failed",
+  "result_viewed",
+  "email_prompt_viewed",
+  "email_saved",
+  "activation_completed",
+  "download_clicked",
+  "share_x_clicked",
+  "share_whatsapp_clicked",
+  "copy_link_clicked",
+  "challenge_created",
+  "challenge_landed",
+  "challenge_accepted",
+  "referral_landed",
+  "referral_generation_completed",
+  "referral_credited",
+  "var_review_started",
+  "var_review_completed",
+  "audio_started",
+  "audio_completed",
+  "product_mode_started",
+  "product_mode_completed",
+  "checkout_started",
+  "checkout_completed",
+] as const;
+export type AnalyticsEventName = (typeof EVENT_NAMES)[number];
+
+export const FEATURE_DEFAULTS = {
+  FEATURE_PROFILE_SCOUT: true,
+  FEATURE_INSTAGRAM_INPUT: true,
+  FEATURE_MANUAL_POSTS: true,
+  FEATURE_CHALLENGES: true,
+  FEATURE_LEADERBOARD: true,
+  FEATURE_PRODUCT_XI: false,
+  FEATURE_AUDIO: false,
+  FEATURE_HERMES_VAR: false,
+  FEATURE_PAYMENTS: false,
+} as const;
+
+const SENSITIVE_EVIDENCE_PATTERN =
+  /\b(race|racial|caste|religion|religious|gender identity|transgender|sexual orientation|gay|lesbian|bisexual|disability|disabled|medical|diagnos(?:is|ed)|mental health|pregnan(?:t|cy)|children?|family|private relationship|financial hardship|nationality|ethnicity|genetic|veteran|immigration status|political affiliation|substance abuse|addiction)\b/i;
+const PROHIBITED_CLAIM_PATTERN =
+  /\b(fraud(?:ulent)?|scam(?:mer|ming)?|criminal(?:ity)?|illegal|corrupt(?:ion)?|brib(?:e|ery)|harass(?:ment|ed|ing)?|abus(?:e|ed|ive)|violent|terroris(?:t|m)|extremis(?:t|m)|murder(?:er)?|rap(?:e|ist)|pedo(?:phile)?|racist|sexist|psychopath|sociopath|mentally ill|medical diagnosis|hidden political affiliation|private conduct|substance abuse|drug addict|alcoholic|bankrupt(?:cy)?|financial debt)\b/i;
+
+export function sanitizeEvidence(evidence: readonly string[]): string[] {
+  return evidence
+    .map((item) =>
+      [...item]
+        .map((character) => {
+          const code = character.charCodeAt(0);
+          return code < 32 || code === 127 ? " " : character;
+        })
+        .join("")
+        .trim(),
+    )
+    .filter(
+      (item) =>
+        item.length > 0 &&
+        item.length <= 500 &&
+        !SENSITIVE_EVIDENCE_PATTERN.test(item) &&
+        !PROHIBITED_CLAIM_PATTERN.test(item),
+    )
+    .slice(0, 10);
+}
+
+export function enforceCardSafety(
+  input: ScoutCard,
+  requestedIntensity: RoastIntensity,
+): { card: ScoutCard; intensity: RoastIntensity } {
+  const unsafe = (value: string | undefined) =>
+    Boolean(
+      value &&
+      (SENSITIVE_EVIDENCE_PATTERN.test(value) ||
+        PROHIBITED_CLAIM_PATTERN.test(value)),
+    );
+  const unsafeText = [
+    input.displayName,
+    input.position,
+    input.clubName,
+    input.headline,
+    input.roast,
+    input.compliment,
+    input.varVerdict,
+    input.transferValue,
+    input.evidenceSummary,
+    input.shareCopy,
+    input.challengeCopy,
+    ...input.stats.flatMap((stat) => [stat.label, stat.reason]),
+  ].some(unsafe);
+  const sparse = input.researchConfidence < 40;
+  const flags = new Set(input.safetyFlags);
+  let intensity = requestedIntensity;
+  const safe = { ...input };
+  if (unsafeText) {
+    if (unsafe(safe.displayName)) delete safe.displayName;
+    safe.position = unsafe(safe.position)
+      ? "Attacking Midfielder"
+      : safe.position;
+    safe.clubName = unsafe(safe.clubName)
+      ? "Public Timeline FC"
+      : safe.clubName;
+    safe.transferValue = unsafe(safe.transferValue)
+      ? "Undisclosed — scout's decision"
+      : safe.transferValue;
+    safe.headline = "Big-match energy with room for a cleaner final pass";
+    safe.roast =
+      "Your public posting style brings plenty of confidence; the visible follow-through occasionally arrives after the final whistle.";
+    safe.compliment =
+      "Your public work shows ambition, recognizable interests, and the courage to keep shipping.";
+    safe.varVerdict =
+      "Decision softened: only public posting and visible product signals were considered.";
+    safe.evidenceSummary =
+      "The scout used only non-sensitive public posting and professional signals.";
+    safe.shareCopy =
+      "My public timeline just received a playful football scout report. Scout yours.";
+    safe.challengeCopy =
+      "Think your public timeline has more aura? Accept this HaaHaaLand challenge.";
+    safe.stats = safe.stats.map((stat) => ({
+      ...stat,
+      label: unsafe(stat.label) ? stat.key : stat.label,
+      reason: unsafe(stat.reason)
+        ? "Score based only on non-sensitive public posting signals."
+        : stat.reason,
+    }));
+    flags.add("deterministic-safety-rewrite");
+    intensity = "friendly";
+  }
+  if (sparse && intensity !== "friendly") {
+    intensity = "friendly";
+    flags.add("intensity-downgraded");
+  }
+  safe.stats = safe.stats.map((stat) =>
+    stat.key === "fraudRisk"
+      ? {
+          ...stat,
+          label: "Fraud Risk*",
+          reason:
+            "Football-meme score for online hype versus visible public output; never an allegation.",
+        }
+      : stat,
+  );
+  safe.safetyFlags = [...flags];
+  return { card: ScoutCardSchema.parse(safe), intensity };
+}
+
+const ManagementTokenSchema = z
+  .string()
+  .min(32)
+  .max(128)
+  .regex(/^[A-Za-z0-9_-]+$/);
+
 export const SaveCardSchema = z.object({
   cardId: z.string().min(1).max(80),
-  email: z.string().email().max(254),
+  managementToken: ManagementTokenSchema,
+  email: z.string().transform((value, ctx) => {
+    try {
+      return normalizeEmail(value);
+    } catch {
+      ctx.addIssue({ code: "custom", message: "Enter a valid email address" });
+      return z.NEVER;
+    }
+  }),
 });
 export const ChallengeSchema = z.object({
   cardId: z.string().min(1).max(80),
-  friendHandle: z.string().max(15).optional(),
+  managementToken: ManagementTokenSchema,
+  sessionId: z.string().uuid(),
+  friendHandle: z
+    .string()
+    .max(15)
+    .transform((value, ctx) => {
+      try {
+        return normalizeXHandle(value);
+      } catch {
+        ctx.addIssue({
+          code: "custom",
+          message: "Enter a valid friend handle",
+        });
+        return z.NEVER;
+      }
+    })
+    .optional(),
+});
+export const ChallengeAcceptSchema = z.object({
+  acceptedCardId: z.string().min(1).max(80),
+  managementToken: ManagementTokenSchema,
+  sessionId: z.string().uuid(),
+});
+export const ShareEventSchema = z.object({
+  channel: z.enum(["x", "whatsapp", "copy", "download"]),
+  sessionId: z.string().uuid(),
 });

@@ -2,6 +2,7 @@ import { ARCHETYPES } from "@haahaaland/archetypes";
 import {
   GenerationRequestSchema,
   ScoutCardSchema,
+  enforceCardSafety,
   type ScoutCard,
 } from "@haahaaland/shared";
 export function localScout(input: unknown): {
@@ -40,6 +41,7 @@ export function localScout(input: unknown): {
     version: "1.0",
     handle: data.xUsername,
     primaryArchetypeId: player.id,
+    secondaryArchetypeId: ARCHETYPES[(seed + 7) % ARCHETYPES.length]!.id,
     position: "Timeline playmaker",
     clubName: `${data.xUsername.slice(0, 18)} Social Club`,
     headline: `${player.safeDisplayName} energy, browser-history finishing`,
@@ -60,14 +62,16 @@ export function localScout(input: unknown): {
     safetyFlags: ["local-fallback", "limited-public-evidence"],
     sourcesUsed: [`https://x.com/${data.xUsername}`],
   });
+  const safe = enforceCardSafety(card, data.intensity);
   return {
     id: crypto.randomUUID(),
-    card,
+    card: safe.card,
     meta: {
       model: "deterministic-fallback",
-      promptVersion: "1.0",
+      promptVersion: "1.2",
       taxonomyVersion: "2026.07.1",
       retryCount: 0,
+      effectiveIntensity: safe.intensity,
     },
   };
 }
