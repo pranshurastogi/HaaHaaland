@@ -5,7 +5,7 @@
 1. Authenticate Wrangler without pasting credentials into files.
 2. Configure public build variables and Worker secrets from `apps/web/.env.example`.
 3. Set `RAILWAY_API_URL` and `INTERNAL_PROXY_SECRET` as private Worker variables.
-4. Run `pnpm --filter @haahaaland/web deploy`.
+4. Run `pnpm --filter @haahaaland/web run deploy`.
 5. Run `node scripts/smoke-test.mjs https://your-web-host`.
 
 ## Railway API
