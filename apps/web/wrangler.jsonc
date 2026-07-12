@@ -6,7 +6,10 @@
   "compatibility_flags": ["nodejs_compat"],
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
   "observability": { "enabled": true },
-  "vars": { "LOCAL_FALLBACK_ENABLED": "true" },
+  "vars": {
+    "LOCAL_FALLBACK_ENABLED": "true",
+    "RAILWAY_API_URL": "https://haahaaland-production.up.railway.app",
+  },
   "env": {
     "ci": {
       "name": "haahaaland-web-ci",

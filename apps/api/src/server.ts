@@ -29,21 +29,11 @@ const stateStore =
   convexUrl && convexSecret
     ? new ConvexStateStore(convexUrl, convexSecret)
     : undefined;
-const r2AccountId = production
-  ? required("R2_ACCOUNT_ID")
-  : process.env.R2_ACCOUNT_ID;
-const r2AccessKeyId = production
-  ? required("R2_ACCESS_KEY_ID")
-  : process.env.R2_ACCESS_KEY_ID;
-const r2SecretAccessKey = production
-  ? required("R2_SECRET_ACCESS_KEY")
-  : process.env.R2_SECRET_ACCESS_KEY;
-const r2BucketName = production
-  ? required("R2_BUCKET_NAME")
-  : process.env.R2_BUCKET_NAME;
-const r2PublicBaseUrl = production
-  ? required("R2_PUBLIC_BASE_URL")
-  : process.env.R2_PUBLIC_BASE_URL;
+const r2AccountId = process.env.R2_ACCOUNT_ID;
+const r2AccessKeyId = process.env.R2_ACCESS_KEY_ID;
+const r2SecretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+const r2BucketName = process.env.R2_BUCKET_NAME;
+const r2PublicBaseUrl = process.env.R2_PUBLIC_BASE_URL;
 const imageStore =
   r2AccountId &&
   r2AccessKeyId &&
