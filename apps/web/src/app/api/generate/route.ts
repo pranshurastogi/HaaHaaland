@@ -5,25 +5,34 @@ import { hashCapability } from "@/lib/capability";
 import { localScout } from "@/lib/fallback";
 import { cardStore } from "@/lib/store";
 export const runtime = "nodejs";
+
+const LOG_TAG = "[haahaaland:generate]";
+
 export async function POST(request: Request) {
-  if (process.env.FEATURE_PROFILE_SCOUT === "false")
+  const requestId = crypto.randomUUID();
+  if (process.env.FEATURE_PROFILE_SCOUT === "false") {
+    console.warn(`${LOG_TAG} ${requestId} blocked: FEATURE_PROFILE_SCOUT=false`);
     return NextResponse.json(
       {
         error: {
           code: "NOT_FOUND",
           message: "Profile scouting is disabled.",
-          requestId: crypto.randomUUID(),
+          requestId,
           retryable: false,
         },
       },
       { status: 404 },
     );
+  }
   const idempotencyKey = request.headers.get("idempotency-key");
   const body = await request.json().catch(() => null);
   try {
     const api = process.env.RAILWAY_API_URL,
       secret = process.env.INTERNAL_PROXY_SECRET;
     if (api && secret) {
+      console.log(
+        `${LOG_TAG} ${requestId} routing to backend API at ${api} (RAILWAY_API_URL configured)`,
+      );
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 25_000);
       try {
@@ -42,27 +51,57 @@ export async function POST(request: Request) {
             body: JSON.stringify(body),
           },
         );
+        if (!response.ok)
+          console.error(
+            `${LOG_TAG} ${requestId} backend API responded with HTTP ${response.status}`,
+          );
+        else
+          console.log(
+            `${LOG_TAG} ${requestId} backend API generation succeeded (HTTP ${response.status})`,
+          );
         const data = await response.json();
         return NextResponse.json(data, { status: response.status });
+      } catch (error) {
+        const timeout = error instanceof Error && error.name === "AbortError";
+        console.error(
+          `${LOG_TAG} ${requestId} backend API call failed: ${
+            timeout
+              ? "request timed out after 25s"
+              : error instanceof Error
+                ? error.message
+                : String(error)
+          }`,
+        );
+        throw error;
       } finally {
         clearTimeout(timer);
       }
     }
+    console.warn(
+      `${LOG_TAG} ${requestId} no backend configured (RAILWAY_API_URL/INTERNAL_PROXY_SECRET missing) — checking local fallback`,
+    );
     const localFallbackEnabled =
       process.env.NODE_ENV !== "production" ||
       process.env.LOCAL_FALLBACK_ENABLED === "true";
-    if (!localFallbackEnabled)
+    if (!localFallbackEnabled) {
+      console.error(
+        `${LOG_TAG} ${requestId} scouting unavailable: no backend configured and LOCAL_FALLBACK_ENABLED is not "true"`,
+      );
       return NextResponse.json(
         {
           error: {
             code: "SERVICE_UNAVAILABLE",
             message: "The scouting service is not configured.",
-            requestId: crypto.randomUUID(),
+            requestId,
             retryable: true,
           },
         },
         { status: 503 },
       );
+    }
+    console.log(
+      `${LOG_TAG} ${requestId} using local deterministic fallback (LOCAL_FALLBACK_ENABLED=true) — not real AI/profile data`,
+    );
     const parsedRequest = GenerationRequestSchema.parse(body);
     const result = localScout(body);
     const managementToken = `${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
@@ -76,10 +115,24 @@ export async function POST(request: Request) {
       managementTokenHash: await hashCapability(managementToken),
       sessionHash: await hashCapability(parsedRequest.sessionId),
     });
+    console.log(
+      `${LOG_TAG} ${requestId} local fallback card ${result.id} stored in-memory (this worker isolate only)`,
+    );
     return NextResponse.json({ ...result, managementToken }, { status: 201 });
   } catch (error) {
     const validationError = error instanceof ZodError;
     const timeout = error instanceof Error && error.name === "AbortError";
+    console.error(
+      `${LOG_TAG} ${requestId} request failed: ${
+        validationError
+          ? `invalid input (${error.issues[0]?.message ?? "validation error"})`
+          : timeout
+            ? "upstream timeout"
+            : error instanceof Error
+              ? error.message
+              : String(error)
+      }`,
+    );
     return NextResponse.json(
       {
         error: {
@@ -93,7 +146,7 @@ export async function POST(request: Request) {
             : timeout
               ? "The scouting service timed out. Try again."
               : "The scouting service is temporarily unavailable.",
-          requestId: crypto.randomUUID(),
+          requestId,
           retryable: !validationError,
         },
       },
