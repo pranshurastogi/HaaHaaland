@@ -11,7 +11,9 @@ const LOG_TAG = "[haahaaland:generate]";
 export async function POST(request: Request) {
   const requestId = crypto.randomUUID();
   if (process.env.FEATURE_PROFILE_SCOUT === "false") {
-    console.warn(`${LOG_TAG} ${requestId} blocked: FEATURE_PROFILE_SCOUT=false`);
+    console.warn(
+      `${LOG_TAG} ${requestId} blocked: FEATURE_PROFILE_SCOUT=false`,
+    );
     return NextResponse.json(
       {
         error: {
