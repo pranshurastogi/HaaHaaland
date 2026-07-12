@@ -6,7 +6,6 @@ const enabled = (name: string, fallback: boolean) => {
 };
 
 export default function Home() {
-  const instagramEnabled = enabled("FEATURE_INSTAGRAM_INPUT", true);
   const manualPostsEnabled = enabled("FEATURE_MANUAL_POSTS", true);
   const leaderboardEnabled = enabled("FEATURE_LEADERBOARD", true);
   return (
@@ -25,7 +24,6 @@ export default function Home() {
         )}
       </header>
       <ScoutExperience
-        instagramEnabled={instagramEnabled}
         manualPostsEnabled={manualPostsEnabled}
         leaderboardEnabled={leaderboardEnabled}
       />

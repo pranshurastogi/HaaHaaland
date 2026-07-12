@@ -40,6 +40,7 @@ export function localScout(input: unknown): {
   const card = ScoutCardSchema.parse({
     version: "1.0",
     handle: data.xUsername,
+    instagramHandle: data.instagramUsername,
     primaryArchetypeId: player.id,
     secondaryArchetypeId: ARCHETYPES[(seed + 7) % ARCHETYPES.length]!.id,
     position: "Timeline playmaker",

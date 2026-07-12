@@ -18,7 +18,7 @@ async function generate(
       ...proxyHeaders,
       ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
     },
-    payload: { xUsername: handle, sessionId },
+    payload: { xUsername: handle, instagramUsername: handle, sessionId },
   });
 }
 
